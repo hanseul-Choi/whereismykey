@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -40,6 +41,13 @@ class GitHubCodeSource(SearchSource):
     def stage(self) -> Stage:
         return Stage.GITHUB
 
+    def build_query(self, spec: KeySpec, options: ScanOptions) -> str:
+        """전 세계 수십만 건의 노이즈를 1차 압축하기 위한 결합 쿼리 생성."""
+        parts = [f'"{spec.prefix}"', f'"{spec.postfix}"']
+        if options.qualifiers:
+            parts.extend(options.qualifiers)
+        return " ".join(parts)
+
     async def search_and_match(
         self,
         spec: KeySpec,
@@ -55,45 +63,53 @@ class GitHubCodeSource(SearchSource):
             "User-Agent": self.user_agent,
         }
 
-        # 검색 쿼리: prefix 검색
-        query = f'"{spec.prefix}"'
-        params = {
-            "q": query,
-            "per_page": min(options.max_results_per_source, 100),
-        }
-
+        query = self.build_query(spec, options)
         client = self._custom_client or httpx.AsyncClient(timeout=options.fetch_timeout_s)
         should_close = self._custom_client is None
 
+        findings: list[Finding] = []
+        page = 1
+        # GitHub Code Search는 최대 1,000건(100건 x 10페이지)까지 지원
+        max_pages = 10 if options.deep_scan else 1
+        per_page = min(options.max_results_per_source, 100)
+
         try:
-            resp = await client.get(
-                "https://api.github.com/search/code",
-                params=params,
-                headers=headers,
-            )
-            if resp.status_code == 401:
-                raise GitHubSourceError("Invalid or expired GitHub token")
-            if resp.status_code == 403:
-                raise GitHubSourceError(
-                    f"GitHub API rate limit exceeded or access forbidden: {resp.text}"
+            while page <= max_pages:
+                params = {
+                    "q": query,
+                    "per_page": per_page,
+                    "page": page,
+                }
+
+                resp = await client.get(
+                    "https://api.github.com/search/code",
+                    params=params,
+                    headers=headers,
                 )
-            if resp.status_code != 200:
-                raise GitHubSourceError(
-                    f"GitHub search API returned status {resp.status_code}: {resp.text}"
-                )
+                if resp.status_code == 401:
+                    raise GitHubSourceError("Invalid or expired GitHub token")
+                if resp.status_code in (403, 429):
+                    raise GitHubSourceError(
+                        f"GitHub API rate limit exceeded or access forbidden: {resp.text}"
+                    )
+                if resp.status_code != 200:
+                    raise GitHubSourceError(
+                        f"GitHub search API returned status {resp.status_code}: {resp.text}"
+                    )
 
-            data = resp.json()
-            items = data.get("items", [])
-            findings: list[Finding] = []
+                data = resp.json()
+                items = data.get("items", [])
+                total_count = data.get("total_count", 0)
 
-            for item in items:
-                html_url = item.get("html_url", "")
-                repo_full_name = item.get("repository", {}).get("full_name")
-                path = item.get("path")
+                if not items:
+                    break
 
-                # text_matches 확인
-                text_matches = item.get("text_matches", [])
-                if text_matches:
+                for item in items:
+                    html_url = item.get("html_url", "")
+                    repo_full_name = item.get("repository", {}).get("full_name")
+                    path = item.get("path")
+
+                    text_matches = item.get("text_matches", [])
                     for tm in text_matches:
                         fragment = tm.get("fragment", "")
                         if not fragment:
@@ -101,14 +117,11 @@ class GitHubCodeSource(SearchSource):
                         match_results = scan_text(fragment, spec)
                         for mr in match_results:
                             confidence, severity = classify(mr.hash_matched)
-                            # 줄 번호 추정 (fragment 내 매치 시작 위치 기반)
-                            line = None
                             start_idx = mr.candidate.span[0]
                             line_count = fragment[:start_idx].count("\n") + 1
-                            line = line_count
-
-                            # URL에 라인 앵커 추가 (#L12)
-                            finding_url = f"{html_url}#L{line}" if html_url and line else html_url
+                            finding_url = (
+                                f"{html_url}#L{line_count}" if html_url and line_count else html_url
+                            )
 
                             findings.append(
                                 Finding(
@@ -119,14 +132,22 @@ class GitHubCodeSource(SearchSource):
                                     url=finding_url,
                                     repo=repo_full_name,
                                     path=path,
-                                    line=line,
+                                    line=line_count,
                                     snippet=mr.snippet,
                                 )
                             )
-                else:
-                    # text_matches가 없는 경우 스니펫 없이 기본 정보만 확인하거나
-                    # raw content가 제공될 경우 처리 가능
-                    pass
+
+                # 종료 조건 검사
+                if not options.deep_scan:
+                    break
+                if len(findings) >= options.max_results_per_source:
+                    break
+                if page * per_page >= total_count or len(items) < per_page:
+                    break
+
+                page += 1
+                # 레이트 리밋 방어를 위한 미세 딜레이
+                await asyncio.sleep(0.1)
 
             return findings
         except httpx.RequestError as e:

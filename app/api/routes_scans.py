@@ -73,6 +73,8 @@ async def create_scan(
         max_results_per_source=request.options.max_results_per_source,
         include_pattern_only=request.options.include_pattern_only,
         fetch_timeout_s=request.options.fetch_timeout_s,
+        deep_scan=request.options.deep_scan,
+        qualifiers=request.options.qualifiers,
     )
 
     # 백그라운드 태스크로 스캔 오케스트레이션 실행 (태스크 참조 보관)

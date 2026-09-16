@@ -106,9 +106,11 @@ curl -X POST http://localhost:8000/scans \
   - `name` (문자열, 선택): 키 식별 이름
 - **`stages`** (배열, 선택): 점검할 스테이지 목록. 기본값 `["github", "web"]`
 - **`options`** (객체, 선택):
-  - `max_results_per_source` (정수): 소스당 최대 검색 건수 (기본: 50)
+  - `max_results_per_source` (정수): 소스당 최대 검색 건수 (기본: 100, 최대 1,000)
   - `include_pattern_only` (불리언): 해시 불일치 패턴 일치 건 포함 여부 (기본: true)
   - `fetch_timeout_s` (실수): 페이지 fetch 타임아웃 초 (기본: 10.0)
+  - `deep_scan` (불리언): 1페이지(100건) 제한 없이 다중 페이지를 순회하며 전수 탐색 (기본: true)
+  - `qualifiers` (배열): GitHub 검색 한정자 목록 (예: `["filename:.env", "org:myorg"]`)
 
 **응답 (202 Accepted):**
 ```json

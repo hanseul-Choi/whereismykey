@@ -38,9 +38,11 @@ class KeySpecSchema(BaseModel):
 class ScanOptionsSchema(BaseModel):
     """스캔 실행 옵션."""
 
-    max_results_per_source: int = 50
+    max_results_per_source: int = 100
     include_pattern_only: bool = True
     fetch_timeout_s: float = 10.0
+    deep_scan: bool = True
+    qualifiers: list[str] | None = None
 
 
 class ScanCreateRequest(BaseModel):

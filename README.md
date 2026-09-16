@@ -1,0 +1,185 @@
+# whereismykey
+
+> **API Key 외부 노출 점검 서비스**  
+> 평문 키를 서버에 보관하거나 전송하지 않고, **앞부분(prefix)**, **뒷부분(postfix)**, 그리고 **전체 SHA-256 해시**만을 활용하여 공개 저장소(GitHub) 및 외부 웹에 키가 노출되었는지 자동으로 탐지합니다.
+
+---
+
+## 1. 주요 특징
+
+- **평문 미보관 매칭 (Zero-Knowledge Hash Matching)**: 키 평문 없이 `KeySpec`을 통해 후보 토큰을 추출하고, SHA-256 해시를 대조하여 노출 여부를 확정(`confirmed`)합니다.
+- **안전한 마스킹 (Redaction)**: 응답 결과, 로그, 스니펫 등 모든 출력에서 키는 `prefix…postfix` 형태로 마스킹됩니다.
+- **2단계 점검 파이프라인**:
+  - **1단계 — GitHub**: GitHub Code Search API를 통한 공개 저장소 검색
+  - **2단계 — 외부 웹**: 검색 엔진(Brave Search API 기본, Google CSE / SerpAPI 지원) + SSRF 가드가 적용된 본문 Fetcher
+- **비동기 잡 & 폴링 API**: 대량 검색을 백그라운드 태스크로 처리하고 진행 상황 및 결과를 JSON 리포트로 제공합니다.
+- **조치 권고 & 삭제 요청(Takedown) 템플릿**: 노출 확인 시 즉시 키 폐기 권고와 노출 사이트 관리자에게 보낼 삭제 요청 메시지를 자동 생성합니다.
+
+---
+
+## 2. 빠른 시작 (Quick Start)
+
+### 사전 요구사항
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (권장 패키지 매니저) 또는 Docker
+
+### 1) 로컬 개발 환경
+
+```bash
+# 1. 의존성 설치
+uv sync --all-extras
+
+# 2. 환경변수 설정
+cp .env.example .env
+# .env 파일에서 GITHUB_TOKEN, BRAVE_API_KEY 등을 설정합니다.
+
+# 3. 서버 실행
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+### 2) Docker Compose 실행
+
+```bash
+docker compose up -d --build
+```
+
+---
+
+## 3. 환경변수 설정 (`.env`)
+
+| 환경변수 | 필수 여부 | 설명 | 기본값 |
+|---|---|---|---|
+| `SERVICE_API_KEY` | 선택 | 서비스 자체 인증용 API Key (`X-API-Key` 헤더로 검증). 미설정 시 인증 비활성 | `None` |
+| `GITHUB_TOKEN` | stage=github 시 필수 | GitHub Code Search API 인증용 Personal Access Token | `None` |
+| `WEB_SEARCH_PROVIDER` | 선택 | 웹 검색 공급자 (`brave` / `google_cse` / `serpapi`) | `brave` |
+| `BRAVE_API_KEY` | provider=brave 시 필수 | Brave Search API 구독 토큰 | `None` |
+| `GOOGLE_CSE_KEY` | provider=google_cse 시 필수 | Google Custom Search JSON API Key | `None` |
+| `GOOGLE_CSE_CX` | provider=google_cse 시 필수 | Google Custom Search Engine ID | `None` |
+| `SERPAPI_KEY` | provider=serpapi 시 필수 | SerpAPI API Key | `None` |
+| `MAX_CONCURRENT_JOBS` | 선택 | 최대 동시 실행 스캔 잡 수 | `4` |
+| `MAX_CONCURRENT_FETCHES` | 선택 | 잡 내부 페이지 최대 동시 fetch 수 | `8` |
+| `FETCH_TIMEOUT_S` | 선택 | HTTP 요청 타임아웃 (초) | `10.0` |
+| `HTTP_USER_AGENT` | 선택 | 아웃바운드 HTTP 요청 User-Agent | `whereismykey/0.1 (+security-scan)` |
+| `DEFAULT_MAX_RESULTS_PER_SOURCE` | 선택 | 소스당 최대 검색 결과 수 | `50` |
+
+---
+
+## 4. API 사용 가이드
+
+### 1) 헬스체크 (`GET /healthz`)
+```bash
+curl -X GET http://localhost:8000/healthz
+# {"status":"ok"}
+```
+
+### 2) 스캔 요청 등록 (`POST /scans`)
+```bash
+curl -X POST http://localhost:8000/scans \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-service-key" \
+  -d '{
+    "key_spec": {
+      "name": "my-service-prod-key",
+      "prefix": "sk_live",
+      "postfix": "a1b2c3d",
+      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "length": 48,
+      "charset": "base62"
+    },
+    "stages": ["github", "web"],
+    "options": {
+      "max_results_per_source": 50,
+      "include_pattern_only": true,
+      "fetch_timeout_s": 10.0
+    }
+  }'
+```
+
+#### 요청 파라미터 상세
+- **`key_spec`** (필수)
+  - `prefix` (문자열, 필수): 키 앞부분 (약 7자)
+  - `postfix` (문자열, 필수): 키 실제 뒷부분 (약 7자)
+  - `sha256` (문자열, 필수): 평문 키의 64자리 hex SHA-256 해시
+  - `length` (정수, 선택): 키 전체 길이
+  - `charset` (문자열, 선택): `base62` | `alnum` | `hex` | `base64url` | `custom`
+  - `custom_charset` (문자열, 선택): `charset=custom`일 때의 정규식 문자 클래스 (예: `A-Za-z0-9_-`)
+  - `name` (문자열, 선택): 키 식별 이름
+- **`stages`** (배열, 선택): 점검할 스테이지 목록. 기본값 `["github", "web"]`
+- **`options`** (객체, 선택):
+  - `max_results_per_source` (정수): 소스당 최대 검색 건수 (기본: 50)
+  - `include_pattern_only` (불리언): 해시 불일치 패턴 일치 건 포함 여부 (기본: true)
+  - `fetch_timeout_s` (실수): 페이지 fetch 타임아웃 초 (기본: 10.0)
+
+**응답 (202 Accepted):**
+```json
+{
+  "job_id": "8d8b671a-2895-46a2-9442-83b38cbb2f45",
+  "status": "queued",
+  "poll_url": "/scans/8d8b671a-2895-46a2-9442-83b38cbb2f45"
+}
+```
+
+### 3) 스캔 상태 및 결과 조회 (`GET /scans/{job_id}`)
+```bash
+curl -X GET http://localhost:8000/scans/8d8b671a-2895-46a2-9442-83b38cbb2f45 \
+  -H "X-API-Key: your-service-key"
+```
+
+**응답 예시 (완료 시):**
+```json
+{
+  "job_id": "8d8b671a-2895-46a2-9442-83b38cbb2f45",
+  "status": "completed",
+  "created_at": "2026-09-17T00:00:00Z",
+  "started_at": "2026-09-17T00:00:01Z",
+  "finished_at": "2026-09-17T00:00:03Z",
+  "progress": {
+    "stage": "web",
+    "sources_done": 2,
+    "sources_total": 2
+  },
+  "result": {
+    "verdict": "EXPOSED",
+    "key_name": "my-service-prod-key",
+    "key_redacted": "sk_live…a1b2c3d",
+    "findings": [
+      {
+        "confidence": "confirmed",
+        "severity": "critical",
+        "stage": "github",
+        "source": "github_code_search",
+        "url": "https://github.com/acme/repo/blob/main/config.py#L12",
+        "repo": "acme/repo",
+        "path": "config.py",
+        "line": 12,
+        "snippet": "API_KEY = \"sk_live…a1b2c3d\""
+      }
+    ],
+    "recommendations": [
+      "노출된 키를 즉시 폐기(revoke)하고 새 키를 발급하세요.",
+      "파일 수정만으로는 부족합니다 — 커밋 히스토리·포크·검색 캐시에 남으므로 키 폐기가 유일한 해결책입니다.",
+      "노출 페이지 소유자에게 아래 템플릿으로 삭제를 요청하세요."
+    ],
+    "takedown_message_template": "안녕하세요,\n귀하께서 관리하시는 아래 페이지에 유효한 API 자격증명으로 보이는 문자열(sk_live…a1b2c3d)이 포함되어 있어 연락드립니다:\n- https://github.com/acme/repo/blob/main/config.py#L12\n\n해당 문자열의 삭제 또는 마스킹 처리를 정중히 요청드립니다.\n감사합니다."
+  },
+  "errors": []
+}
+```
+
+#### 최종 판정 (`verdict`) 기준
+- **`EXPOSED`**: 해시가 일치하는 키(`confirmed`)가 1건 이상 발견됨. (즉시 폐기 필요)
+- **`NOT_FOUND`**: 검색 결과에서 대상 키가 전혀 발견되지 않음.
+- **`INCONCLUSIVE`**: 소스 API 에러가 발생했거나, 해시 불일치 패턴 매치(`pattern_only`)만 발견되어 완전한 판정이 어려운 상태.
+
+---
+
+## 5. 테스트 및 품질 검증
+
+```bash
+# 1. 전체 단위 및 통합 테스트 실행 (67개 테스트)
+uv run pytest
+
+# 2. Ruff 린트 및 코드 포맷 검사
+uv run ruff check .
+uv run ruff format --check .
+```

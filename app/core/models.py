@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 
 
@@ -18,14 +20,71 @@ class Severity(StrEnum):
 
 
 class Verdict(StrEnum):
-    EXPOSED = "exposed"
-    NOT_FOUND = "not_found"
-    INCONCLUSIVE = "inconclusive"
+    EXPOSED = "EXPOSED"
+    NOT_FOUND = "NOT_FOUND"
+    INCONCLUSIVE = "INCONCLUSIVE"
 
 
 class Stage(StrEnum):
     GITHUB = "github"
     WEB = "web"
+
+
+class JobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class Finding:
+    """단일 노출/후보 발견 기록."""
+
+    confidence: Confidence
+    severity: Severity
+    stage: Stage
+    source: str
+    url: str
+    repo: str | None = None
+    path: str | None = None
+    line: int | None = None
+    snippet: str = ""
+
+
+@dataclass(frozen=True)
+class JobProgress:
+    """스캔 진행 상황."""
+
+    stage: Stage | None = None
+    sources_done: int = 0
+    sources_total: int = 0
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    """스캔 최종 결과 리포트."""
+
+    verdict: Verdict
+    key_name: str | None
+    key_redacted: str
+    findings: list[Finding] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
+    takedown_message_template: str = ""
+
+
+@dataclass
+class ScanJob:
+    """스캔 잡 상태."""
+
+    job_id: str
+    status: JobStatus = JobStatus.QUEUED
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    progress: JobProgress = field(default_factory=JobProgress)
+    result: ScanResult | None = None
+    errors: list[str] = field(default_factory=list)
 
 
 _SEVERITY_BY_CONFIDENCE: dict[Confidence, Severity] = {

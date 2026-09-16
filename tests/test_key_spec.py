@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from app.core.key_spec import (
+from whereismykey.core.key_spec import (
     DEFAULT_MIDDLE_MAX,
     DEFAULT_MIDDLE_MIN,
     Charset,

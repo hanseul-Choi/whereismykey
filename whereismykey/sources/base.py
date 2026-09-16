@@ -5,8 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from app.core.key_spec import KeySpec
-from app.core.models import Finding, Stage
+from whereismykey.core.key_spec import KeySpec
+from whereismykey.core.models import Finding, Stage
 
 
 @dataclass(frozen=True)

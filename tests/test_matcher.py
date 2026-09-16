@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 
-from app.core.key_spec import Charset, KeySpec
-from app.core.matcher import build_pattern, has_confirmed, scan_text
+from whereismykey.core.key_spec import Charset, KeySpec
+from whereismykey.core.matcher import build_pattern, has_confirmed, scan_text
 
 from tests.conftest import FAKE_KEY, FAKE_POSTFIX, FAKE_PREFIX, FAKE_SHA256
 

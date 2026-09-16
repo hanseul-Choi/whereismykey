@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from app.core.redaction import (
+from whereismykey.core.redaction import (
     RedactingLogFilter,
     build_snippet,
     redact_in_text,

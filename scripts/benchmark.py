@@ -12,12 +12,12 @@ import random
 import time
 from typing import Any
 
-from app.core.key_spec import Charset, KeySpec
-from app.core.matcher import build_pattern, scan_text
-from app.core.models import Confidence, Finding, Severity, Stage, Verdict
-from app.scanner.engine import ScanEngine
-from app.scanner.job_store import JobStore
-from app.sources.base import ScanOptions, SearchSource
+from whereismykey.core.key_spec import Charset, KeySpec
+from whereismykey.core.matcher import build_pattern, scan_text
+from whereismykey.core.models import Confidence, Finding, Severity, Stage, Verdict
+from whereismykey.scanner.engine import ScanEngine
+from whereismykey.scanner.job_store import JobStore
+from whereismykey.sources.base import ScanOptions, SearchSource
 
 TARGET_KEY = "sk_live_9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d_a1b2c3d"
 PREFIX = "sk_live_"

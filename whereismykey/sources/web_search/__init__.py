@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from app.config import Settings
-from app.sources.web_search.base import WebSearchError, WebSearchProvider, WebSearchResultItem
-from app.sources.web_search.brave import BraveSearchProvider
-from app.sources.web_search.google_cse import GoogleCSESearchProvider
-from app.sources.web_search.serpapi import SerpAPISearchProvider
+from whereismykey.config import Settings
+from whereismykey.sources.web_search.base import (
+    WebSearchError,
+    WebSearchProvider,
+    WebSearchResultItem,
+)
+from whereismykey.sources.web_search.brave import BraveSearchProvider
+from whereismykey.sources.web_search.google_cse import GoogleCSESearchProvider
+from whereismykey.sources.web_search.serpapi import SerpAPISearchProvider
 
 
 def get_web_search_provider(settings: Settings) -> WebSearchProvider:

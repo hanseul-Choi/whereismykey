@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from app.config import Settings
-from app.core.models import Stage
-from app.sources.base import SearchSource
-from app.sources.fetcher import SafeFetcher
-from app.sources.github_code import GitHubCodeSource
-from app.sources.web import WebSearchSource
-from app.sources.web_search import get_web_search_provider
+from whereismykey.config import Settings
+from whereismykey.core.models import Stage
+from whereismykey.sources.base import SearchSource
+from whereismykey.sources.fetcher import SafeFetcher
+from whereismykey.sources.github_code import GitHubCodeSource
+from whereismykey.sources.web import WebSearchSource
+from whereismykey.sources.web_search import get_web_search_provider
 
 
 def create_sources_for_stages(

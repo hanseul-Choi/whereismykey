@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.models import (
+from whereismykey.core.models import (
     Confidence,
     Severity,
     Verdict,

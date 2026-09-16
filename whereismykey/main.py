@@ -8,8 +8,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.routes_scans import router as scans_router
-from app.core.redaction import RedactingLogFilter
+from whereismykey.api.routes_scans import router as scans_router
+from whereismykey.core.redaction import RedactingLogFilter
 
 
 @asynccontextmanager

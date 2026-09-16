@@ -5,13 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app.config import Settings, get_settings
-from app.core.key_spec import KeySpec
-from app.core.models import Finding, JobProgress, Stage
-from app.report.builder import build_scan_result
-from app.scanner.job_store import JobStore, get_job_store
-from app.scanner.stages import create_sources_for_stages
-from app.sources.base import ScanOptions, SearchSource
+from whereismykey.config import Settings, get_settings
+from whereismykey.core.key_spec import KeySpec
+from whereismykey.core.models import Finding, JobProgress, Stage
+from whereismykey.report.builder import build_scan_result
+from whereismykey.scanner.job_store import JobStore, get_job_store
+from whereismykey.scanner.stages import create_sources_for_stages
+from whereismykey.sources.base import ScanOptions, SearchSource
 
 logger = logging.getLogger(__name__)
 

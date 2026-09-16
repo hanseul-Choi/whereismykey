@@ -1,4 +1,4 @@
-"""Brave Search API 공급자 구현."""
+"""SerpAPI 공급자 구현."""
 
 from __future__ import annotations
 
@@ -6,13 +6,17 @@ import logging
 
 import httpx
 
-from app.sources.web_search.base import WebSearchError, WebSearchProvider, WebSearchResultItem
+from whereismykey.sources.web_search.base import (
+    WebSearchError,
+    WebSearchProvider,
+    WebSearchResultItem,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class BraveSearchProvider(WebSearchProvider):
-    """Brave Search API 공급자."""
+class SerpAPISearchProvider(WebSearchProvider):
+    """SerpAPI (Google 검색 엔진) 공급자."""
 
     def __init__(
         self,
@@ -27,21 +31,18 @@ class BraveSearchProvider(WebSearchProvider):
 
     @property
     def name(self) -> str:
-        return "brave"
+        return "serpapi"
 
     async def search(self, query: str, max_results: int) -> list[WebSearchResultItem]:
         if not self.api_key:
-            raise WebSearchError("BRAVE_API_KEY is not configured")
+            raise WebSearchError("SERPAPI_KEY is not configured")
 
-        headers = {
-            "Accept": "application/json",
-            "Accept-Encoding": "gzip",
-            "X-Subscription-Token": self.api_key,
-            "User-Agent": self.user_agent,
-        }
+        headers = {"User-Agent": self.user_agent}
         params = {
+            "api_key": self.api_key,
+            "engine": "google",
             "q": query,
-            "count": min(max_results, 20),
+            "num": min(max_results, 10),
         }
 
         client = self._custom_client or httpx.AsyncClient(timeout=10.0)
@@ -49,31 +50,29 @@ class BraveSearchProvider(WebSearchProvider):
 
         try:
             resp = await client.get(
-                "https://api.search.brave.com/res/v1/web/search",
+                "https://serpapi.com/search",
                 headers=headers,
                 params=params,
             )
             if resp.status_code != 200:
-                raise WebSearchError(
-                    f"Brave Search API returned status {resp.status_code}: {resp.text}"
-                )
+                raise WebSearchError(f"SerpAPI returned status {resp.status_code}: {resp.text}")
 
             data = resp.json()
-            results = data.get("web", {}).get("results", [])
+            results = data.get("organic_results", [])
             items: list[WebSearchResultItem] = []
             for r in results:
-                url = r.get("url")
-                if url:
+                link = r.get("link")
+                if link:
                     items.append(
                         WebSearchResultItem(
-                            url=url,
+                            url=link,
                             title=r.get("title", ""),
-                            snippet=r.get("description", ""),
+                            snippet=r.get("snippet", ""),
                         )
                     )
             return items
         except httpx.RequestError as e:
-            raise WebSearchError(f"Network error calling Brave Search API: {e}") from e
+            raise WebSearchError(f"Network error calling SerpAPI: {e}") from e
         finally:
             if should_close:
                 await client.aclose()

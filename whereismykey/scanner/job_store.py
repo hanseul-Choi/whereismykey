@@ -6,10 +6,10 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.core.models import JobProgress, JobStatus, ScanJob
+from whereismykey.core.models import JobProgress, JobStatus, ScanJob
 
 if TYPE_CHECKING:
-    from app.core.models import ScanResult
+    from whereismykey.core.models import ScanResult
 
 
 class JobStore:

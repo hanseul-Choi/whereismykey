@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from app.config import Settings, get_settings
-from app.main import app
 from httpx import ASGITransport
+from whereismykey.config import Settings, get_settings
+from whereismykey.main import app
 
 from tests.conftest import FAKE_POSTFIX, FAKE_PREFIX, FAKE_SHA256
 

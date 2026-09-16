@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.core.key_spec import KeySpec
-from app.core.models import Confidence, Finding, ScanResult, Verdict, verdict_for
-from app.sources.base import ScanOptions
+from whereismykey.core.key_spec import KeySpec
+from whereismykey.core.models import Confidence, Finding, ScanResult, Verdict, verdict_for
+from whereismykey.sources.base import ScanOptions
 
 DEFAULT_EXPOSED_RECOMMENDATIONS = [
     "노출된 키를 즉시 폐기(revoke)하고 새 키를 발급하세요.",

@@ -7,7 +7,7 @@ import ipaddress
 import httpx
 import pytest
 import respx
-from app.sources.fetcher import (
+from whereismykey.sources.fetcher import (
     FetcherError,
     SafeFetcher,
     extract_text_from_html,

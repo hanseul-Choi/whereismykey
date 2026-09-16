@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app.core.key_spec import KeySpec
-from app.core.matcher import scan_text
-from app.core.models import Finding, Stage, classify
-from app.sources.base import ScanOptions, SearchSource
-from app.sources.fetcher import SafeFetcher
-from app.sources.web_search.base import WebSearchProvider
+from whereismykey.core.key_spec import KeySpec
+from whereismykey.core.matcher import scan_text
+from whereismykey.core.models import Finding, Stage, classify
+from whereismykey.sources.base import ScanOptions, SearchSource
+from whereismykey.sources.fetcher import SafeFetcher
+from whereismykey.sources.web_search.base import WebSearchProvider
 
 logger = logging.getLogger(__name__)
 

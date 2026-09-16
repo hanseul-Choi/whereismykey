@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 
 import pytest
-from app.core.key_spec import Charset, KeySpec
+from whereismykey.core.key_spec import Charset, KeySpec
 
 # 테스트 전역에서 쓰는 가짜 키. 실제 자격증명 아님.
 FAKE_KEY = "sk_livexABCDEFGHIJKLMNOPQRSTUVWX0123456a1b2c3d"

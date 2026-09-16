@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from app.core.models import (
+from whereismykey.core.models import (
     Confidence,
     Finding,
     JobStatus,
@@ -11,9 +11,9 @@ from app.core.models import (
     Stage,
     Verdict,
 )
-from app.scanner.engine import ScanEngine
-from app.scanner.job_store import JobStore
-from app.sources.base import ScanOptions, SearchSource
+from whereismykey.scanner.engine import ScanEngine
+from whereismykey.scanner.job_store import JobStore
+from whereismykey.sources.base import ScanOptions, SearchSource
 
 
 class MockSource(SearchSource):

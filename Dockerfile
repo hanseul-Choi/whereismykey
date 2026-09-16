@@ -11,7 +11,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # 애플리케이션 코드 복사 및 설치
-COPY app/ app/
+COPY whereismykey/ whereismykey/
 RUN uv sync --frozen --no-dev
 
 # 런타임 이미지
@@ -25,7 +25,7 @@ RUN addgroup --system --gid 1001 appgroup && \
 
 # 빌더 스테이지에서 가상환경 및 코드 복사
 COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/app /app/app
+COPY --from=builder /app/whereismykey /app/whereismykey
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -35,4 +35,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "whereismykey.main:app", "--host", "0.0.0.0", "--port", "8000"]

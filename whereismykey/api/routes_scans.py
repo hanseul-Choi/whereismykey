@@ -8,16 +8,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
-from app.api.schemas import (
+from whereismykey.api.schemas import (
     ScanCreateRequest,
     ScanCreateResponse,
     ScanJobResponse,
 )
-from app.config import Settings, get_settings
-from app.core.key_spec import KeySpecError
-from app.scanner.engine import ScanEngine, get_scan_engine
-from app.scanner.job_store import JobStore, get_job_store
-from app.sources.base import ScanOptions
+from whereismykey.config import Settings, get_settings
+from whereismykey.core.key_spec import KeySpecError
+from whereismykey.scanner.engine import ScanEngine, get_scan_engine
+from whereismykey.scanner.job_store import JobStore, get_job_store
+from whereismykey.sources.base import ScanOptions
 
 router = APIRouter()
 

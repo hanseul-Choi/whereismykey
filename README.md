@@ -69,13 +69,48 @@ cp .env.example .env
 # .env 파일에서 GITHUB_TOKEN, BRAVE_API_KEY 등을 설정합니다.
 
 # 3. 서버 실행
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn whereismykey.main:app --reload --port 8000
 ```
 
 ### 2) Docker Compose 실행
 
 ```bash
 docker compose up -d --build
+```
+
+### 3) 파이썬 모듈로 직접 사용하기 (`import whereismykey`)
+
+별도의 웹 서버 기동 없이, 본인의 파이썬 스크립트나 서비스에서 라이브러리로 직접 `import`하여 사용할 수 있습니다.
+
+```python
+import whereismykey as wmk
+
+# 1. 점검할 키 명세 정의 (평문 없이 앞뒤 7자 + SHA-256 해시)
+spec = wmk.KeySpec(
+    prefix="sk_live",
+    postfix="a1b2c3d",
+    sha256="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    name="my-service-key",
+)
+
+# 2-1. 동기 방식 실행 (일반 스크립트 / CLI 배치용)
+# 토큰은 .env에서 자동으로 읽어오거나 직접 파라미터로 전달 가능합니다.
+result = wmk.scan(spec, github_token="ghp_your_github_token")
+
+# 2-2. 비동기 방식 실행 (FastAPI / asyncio 애플리케이션용)
+# result = await wmk.scan_async(spec, github_token="ghp_your_github_token")
+
+# 3. 결과 확인
+print(f"최종 판정: {result.verdict}")  # EXPOSED | NOT_FOUND | INCONCLUSIVE
+
+if result.verdict == wmk.Verdict.EXPOSED:
+    print(f"[경고] 키가 외부에 노출되었습니다! (마스킹 키: {result.key_redacted})")
+    for finding in result.findings:
+        print(f"- 노출 위치: {finding.url}")
+        print(f"  스니펫: {finding.snippet}")
+    print("\n[권고 조치 사항]")
+    for rec in result.recommendations:
+        print(f"- {rec}")
 ```
 
 ---

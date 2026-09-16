@@ -10,8 +10,8 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from app.core.key_spec import KeySpec
-from app.core.redaction import build_snippet
+from whereismykey.core.key_spec import KeySpec
+from whereismykey.core.redaction import build_snippet
 
 # 토큰 경계: 앞뒤로 키에 쓰일 법한 문자가 붙어 있으면 다른 토큰의 일부로 본다.
 _BOUNDARY_CLASS = r"A-Za-z0-9_\-"

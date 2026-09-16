@@ -5,9 +5,9 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-from app.core.models import Confidence, Severity, Stage
-from app.sources.base import ScanOptions
-from app.sources.github_code import GitHubCodeSource, GitHubSourceError
+from whereismykey.core.models import Confidence, Severity, Stage
+from whereismykey.sources.base import ScanOptions
+from whereismykey.sources.github_code import GitHubCodeSource, GitHubSourceError
 
 from tests.conftest import FAKE_KEY, FAKE_POSTFIX, FAKE_PREFIX
 

@@ -5,12 +5,12 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-from app.config import Settings
-from app.core.models import Confidence, Severity, Stage
-from app.sources.base import ScanOptions
-from app.sources.fetcher import SafeFetcher
-from app.sources.web import WebSearchSource
-from app.sources.web_search import (
+from whereismykey.config import Settings
+from whereismykey.core.models import Confidence, Severity, Stage
+from whereismykey.sources.base import ScanOptions
+from whereismykey.sources.fetcher import SafeFetcher
+from whereismykey.sources.web import WebSearchSource
+from whereismykey.sources.web_search import (
     BraveSearchProvider,
     GoogleCSESearchProvider,
     SerpAPISearchProvider,

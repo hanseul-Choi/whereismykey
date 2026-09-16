@@ -6,8 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.key_spec import Charset, KeySpec
-from app.core.models import Confidence, JobStatus, Severity, Stage, Verdict
+from whereismykey.core.key_spec import Charset, KeySpec
+from whereismykey.core.models import Confidence, JobStatus, Severity, Stage, Verdict
 
 
 class KeySpecSchema(BaseModel):

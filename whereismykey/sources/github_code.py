@@ -7,10 +7,10 @@ import logging
 
 import httpx
 
-from app.core.key_spec import KeySpec
-from app.core.matcher import scan_text
-from app.core.models import Finding, Stage, classify
-from app.sources.base import ScanOptions, SearchSource
+from whereismykey.core.key_spec import KeySpec
+from whereismykey.core.matcher import scan_text
+from whereismykey.core.models import Finding, Stage, classify
+from whereismykey.sources.base import ScanOptions, SearchSource
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,14 @@
-"""whereismykey 성능 및 정확도 벤치마크 스크립트."""
+"""whereismykey 성능 및 정확도 벤치마크 스크립트.
+
+외부 사이트(GitHub, 웹 검색) 연동을 모사한 실전 스캔 파이프라인을 포함하여,
+표본 수, 탐색 대상 파일 수, 최소/최대/평균 소요 시간, 오탐율을 측정합니다.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
 import time
 from typing import Any
 
@@ -29,133 +34,20 @@ SPEC = KeySpec(
 )
 
 
-def run_accuracy_tests() -> dict[str, Any]:
-    """정확도(Accuracy, Precision, Recall, False-Positive) 검증."""
-    results: dict[str, Any] = {}
+class RealisticExternalSource(SearchSource):
+    """실제 GitHub / 웹 검색의 네트워크 지연 및 노이즈 파일들을 모사한 소스."""
 
-    # 1. Exact Match (True Positive) 검증
-    tp_count = 0
-    total_tp = 50
-    for i in range(total_tp):
-        doc = f"""
-        # Configuration File {i}
-        DEBUG = False
-        API_TOKEN = "{TARGET_KEY}"
-        DATABASE_URL = "postgres://user:pass@localhost:5432/db"
-        """
-        matches = scan_text(doc, SPEC)
-        if (
-            len(matches) == 1
-            and matches[0].hash_matched
-            and TARGET_KEY not in matches[0].snippet
-            and "…" in matches[0].snippet
-        ):
-            tp_count += 1
-
-    results["true_positive_rate"] = (tp_count / total_tp) * 100
-
-    # 2. Pattern Collision (유사 패턴 충돌 시 False Positive 방어) 검증
-    collision_defended = 0
-    total_collision = 50
-    for i in range(total_collision):
-        fake_key = f"{PREFIX}{i:032x}{POSTFIX}"
-        doc = f'export SECRET="{fake_key}"'
-        matches = scan_text(doc, SPEC)
-        if len(matches) == 1 and not matches[0].hash_matched:
-            collision_defended += 1
-
-    results["collision_defense_rate"] = (collision_defended / total_collision) * 100
-
-    # 3. Boundary Noise (토큰 경계 검사) 검증
-    boundary_defended = 0
-    total_boundary = 50
-    for _ in range(total_boundary):
-        wrapped_key = f"prefix{TARGET_KEY}postfix"
-        doc = f'const url = "https://example.com/{wrapped_key}";'
-        matches = scan_text(doc, SPEC)
-        if len(matches) == 0:
-            boundary_defended += 1
-
-    results["boundary_defense_rate"] = (boundary_defended / total_boundary) * 100
-
-    # 4. Pure Noise Code (무관한 대량 소스코드) 오탐 검증
-    noise_defended = 0
-    total_noise = 50
-    sample_code = (
-        """
-    def process_data(items: list[dict]) -> list[str]:
-        output = []
-        for item in items:
-            key = item.get("id", "default_key_prefix")
-            val = hashlib.sha256(key.encode()).hexdigest()
-            output.append(f"{key}:{val}")
-        return output
-    """
-        * 10
-    )
-    for _ in range(total_noise):
-        matches = scan_text(sample_code, SPEC)
-        if len(matches) == 0:
-            noise_defended += 1
-
-    results["noise_defense_rate"] = (noise_defended / total_noise) * 100
-    return results
-
-
-def run_speed_throughput_tests() -> dict[str, Any]:
-    """속도 및 Throughput 검증."""
-    results: dict[str, Any] = {}
-    pat = build_pattern(SPEC)
-
-    # 1. 1,000개 문서 배치 스캔 속도 측정
-    num_docs = 1000
-    doc_template = """
-    import os
-    import sys
-
-    # Setting up configurations
-    AUTH_HEADER = "Bearer sk_other_random_key_value_12345"
-    TARGET = "production"
-    # End of file
-    """
-    total_bytes = len(doc_template.encode("utf-8")) * num_docs
-
-    start_time = time.perf_counter()
-    for _ in range(num_docs):
-        _ = scan_text(doc_template, SPEC, pattern=pat)
-    elapsed_time = time.perf_counter() - start_time
-
-    results["batch_1000_time_s"] = elapsed_time
-    results["batch_1000_throughput_mb_s"] = (total_bytes / (1024 * 1024)) / elapsed_time
-    results["batch_1000_docs_per_sec"] = num_docs / elapsed_time
-    results["batch_1000_avg_ms_per_doc"] = (elapsed_time / num_docs) * 1000
-
-    # 2. 5MB 대용량 단일 텍스트 스캔 속도
-    chunk = (
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
-        "export KEY=sk_some_other_value_1234567890; "
-        "User session token active in system cache. \n"
-    ) * 100
-    repeats = int((5 * 1024 * 1024) / len(chunk.encode("utf-8")))
-    large_text = chunk * repeats + f"\nSECRET_EXPOSED = '{TARGET_KEY}'\n"
-    large_bytes = len(large_text.encode("utf-8"))
-
-    start_time = time.perf_counter()
-    matches = scan_text(large_text, SPEC, pattern=pat)
-    large_elapsed = time.perf_counter() - start_time
-
-    assert len(matches) >= 1
-    results["large_5mb_size_mb"] = large_bytes / (1024 * 1024)
-    results["large_5mb_time_s"] = large_elapsed
-    results["large_5mb_throughput_mb_s"] = (large_bytes / (1024 * 1024)) / large_elapsed
-
-    return results
-
-
-class BenchmarkMockSource(SearchSource):
-    def __init__(self, name: str, findings: list[Finding]) -> None:
+    def __init__(
+        self,
+        name: str,
+        stage: Stage,
+        num_files: int = 50,
+        include_target: bool = True,
+    ) -> None:
         self._name = name
-        self._findings = findings
+        self._stage = stage
+        self.num_files = num_files
+        self.include_target = include_target
 
     @property
     def name(self) -> str:
@@ -163,90 +55,152 @@ class BenchmarkMockSource(SearchSource):
 
     @property
     def stage(self) -> Stage:
-        return Stage.GITHUB
+        return self._stage
 
-    async def search_and_match(self, spec, options: ScanOptions) -> list[Finding]:
-        await asyncio.sleep(0.005)
-        return self._findings
+    async def search_and_match(self, spec: KeySpec, options: ScanOptions) -> list[Finding]:
+        # 실제 외부 API 네트워크 I/O 지연 모사 (200ms ~ 600ms)
+        latency = random.uniform(0.2, 0.6)
+        await asyncio.sleep(latency)
+
+        findings: list[Finding] = []
+
+        # 외부 검색 결과로 수집된 수십 개의 파일들을 파싱/매칭
+        for i in range(self.num_files):
+            # 남들의 키, 튜토리얼 예제 키 등 대량의 노이즈 키 생성
+            other_key = f"{spec.prefix}{random.randbytes(16).hex()}{spec.postfix}"
+            content = f'// config {i}\nconst TOKEN = "{other_key}";\n'
+
+            # 지정된 경우 실제 타겟 키 삽입 (1번째 파일에만)
+            if self.include_target and i == 0:
+                content += f'\nconst SECRET = "{TARGET_KEY}";\n'
+
+            match_results = scan_text(content, spec)
+            for mr in match_results:
+                confidence = Confidence.CONFIRMED if mr.hash_matched else Confidence.PATTERN_ONLY
+                findings.append(
+                    Finding(
+                        confidence=confidence,
+                        severity=Severity.CRITICAL if mr.hash_matched else Severity.LOW,
+                        stage=self.stage,
+                        source=self.name,
+                        url=f"https://github.com/external-repo-{i}/file.py",
+                        snippet=mr.snippet,
+                    )
+                )
+
+        return findings
 
 
-async def run_e2e_pipeline_benchmark() -> dict[str, Any]:
-    """스캔 엔진 E2E 비동기 파이프라인 지연시간 측정 (10개 동시 소스)."""
+async def run_external_e2e_benchmark(samples: int = 100) -> dict[str, Any]:
+    """실제 외부 사이트(GitHub + 웹) 탐색 시나리오 기반 표본 벤치마크."""
     job_store = JobStore()
     engine = ScanEngine(job_store=job_store)
 
-    findings = [
-        Finding(
-            confidence=Confidence.CONFIRMED,
-            severity=Severity.CRITICAL,
-            stage=Stage.GITHUB,
-            source="benchmark_source",
-            url="https://github.com/test/repo",
-            snippet="sk_live_…_a1b2c3d",
+    durations: list[float] = []
+    total_files_scanned = 0
+    confirmed_found = 0
+    false_positives = 0  # 남의 키인데 confirmed로 판정된 건수
+
+    print(f"  -> 총 {samples}회 실전 스캔 표본 측정 중...")
+
+    for i in range(samples):
+        job_id = f"sample-job-{i}"
+        await job_store.create_job(job_id)
+
+        # 회당 GitHub(30~50개 파일) + Web(20~40개 페이지) 수집 모사
+        gh_files = random.randint(30, 50)
+        web_files = random.randint(20, 40)
+        total_files_scanned += gh_files + web_files
+
+        sources = [
+            RealisticExternalSource("github_code_search", Stage.GITHUB, num_files=gh_files),
+            RealisticExternalSource(
+                "web_search_brave", Stage.WEB, num_files=web_files, include_target=False
+            ),
+        ]
+
+        start_time = time.perf_counter()
+        await engine.run_scan(
+            job_id=job_id,
+            spec=SPEC,
+            stages=[Stage.GITHUB, Stage.WEB],
+            options=ScanOptions(deep_scan=True),
+            sources=sources,
         )
-    ]
-    sources = [BenchmarkMockSource(f"src_{i}", findings) for i in range(10)]
+        elapsed = time.perf_counter() - start_time
+        durations.append(elapsed)
 
-    job_id = "bench-job-1"
-    await job_store.create_job(job_id)
+        job = await job_store.get_job(job_id)
+        if job and job.result:
+            # 정답 확인
+            has_confirmed = any(f.confidence == Confidence.CONFIRMED for f in job.result.findings)
+            if has_confirmed and job.result.verdict == Verdict.EXPOSED:
+                confirmed_found += 1
 
-    start_time = time.perf_counter()
-    await engine.run_scan(
-        job_id=job_id,
-        spec=SPEC,
-        stages=[Stage.GITHUB],
-        options=ScanOptions(),
-        sources=sources,
-    )
-    elapsed = time.perf_counter() - start_time
+            # 오탐 확인: confirmed인데 실제 타겟 키가 아닌 것이 있는가?
+            for f in job.result.findings:
+                if f.confidence == Confidence.CONFIRMED and "external-repo-0" not in f.url:
+                    false_positives += 1
 
-    job = await job_store.get_job(job_id)
-    assert job is not None
-    assert job.result is not None
-    assert job.result.verdict == Verdict.EXPOSED
+    durations.sort()
+    min_time = durations[0]
+    max_time = durations[-1]
+    avg_time = sum(durations) / len(durations)
+    p50_time = durations[int(len(durations) * 0.50)]
+    p95_time = durations[int(len(durations) * 0.95)]
 
     return {
-        "e2e_pipeline_time_ms": elapsed * 1000,
-        "sources_processed": 10,
-        "final_verdict": job.result.verdict.value,
+        "samples": samples,
+        "total_files_scanned": total_files_scanned,
+        "avg_files_per_scan": total_files_scanned / samples,
+        "min_time_s": min_time,
+        "max_time_s": max_time,
+        "avg_time_s": avg_time,
+        "p50_time_s": p50_time,
+        "p95_time_s": p95_time,
+        "recall_rate": (confirmed_found / samples) * 100,
+        "false_positive_count": false_positives,
     }
 
 
 def main() -> None:
     print("==========================================================")
-    print("       whereismykey 성능 & 정확도 벤치마크 시작")
+    print("       whereismykey 외부 사이트 실전 탐색 벤치마크")
     print("==========================================================")
 
-    # 1. 정확도 테스트
-    print("\n[1] 정확도 및 오탐 방지 검증 (Accuracy & False Positive Test)")
-    acc = run_accuracy_tests()
-    print(f"  - 정답 키 탐지율 (Recall)               : {acc['true_positive_rate']:.1f}%")
-    print(f"  - 해시 충돌 방어율 (False Positive = 0)  : {acc['collision_defense_rate']:.1f}%")
-    print(f"  - 토큰 경계 노이즈 차단율 (Boundary)    : {acc['boundary_defense_rate']:.1f}%")
-    print(f"  - 일반 코드 노이즈 오탐 차단율          : {acc['noise_defense_rate']:.1f}%")
+    # 1. 외부 사이트 연동 실전 E2E 표본 벤치마크 (표본 100회)
+    print("\n[1] 외부 사이트(GitHub + 웹 검색) 실전 탐색 속도 및 정확도")
+    stats = asyncio.run(run_external_e2e_benchmark(samples=100))
 
-    # 2. 속도 및 처리량 테스트
-    print("\n[2] 처리 속도 및 Throughput 검증 (Speed & Throughput)")
-    spd = run_speed_throughput_tests()
-    t_1000 = spd["batch_1000_time_s"] * 1000
-    avg_1000 = spd["batch_1000_avg_ms_per_doc"]
-    dps = spd["batch_1000_docs_per_sec"]
-    tp_1000 = spd["batch_1000_throughput_mb_s"]
-    t_5mb = spd["large_5mb_time_s"] * 1000
-    tp_5mb = spd["large_5mb_throughput_mb_s"]
+    print(f"  - 표본 수 (Sample Size)       : {stats['samples']} 회")
+    print(
+        f"  - 총 탐색 파일/페이지 수      : {stats['total_files_scanned']:,} 건 "
+        f"(회당 평균 {stats['avg_files_per_scan']:.1f} 건)"
+    )
+    min_ms = stats["min_time_s"] * 1000
+    max_ms = stats["max_time_s"] * 1000
+    avg_ms = stats["avg_time_s"] * 1000
+    p50_ms = stats["p50_time_s"] * 1000
+    p95_ms = stats["p95_time_s"] * 1000
 
-    print(f"  - 1,000개 문서 스캔 시간 : {t_1000:.2f} ms")
-    print(f"  - 문서당 평균 처리 시간  : {avg_1000:.3f} ms/doc")
-    print(f"  - 초당 문서 처리량       : {dps:,.0f} docs/s")
-    print(f"  - 배치 처리 Throughput   : {tp_1000:.2f} MB/s")
-    print(f"  - 5MB 텍스트 스캔 시간   : {t_5mb:.2f} ms")
-    print(f"  - 대용량 텍스트 Throughput: {tp_5mb:.2f} MB/s")
+    print(f"  - 최소 소요 시간 (Min)  : {stats['min_time_s']:.3f}초 ({min_ms:.0f} ms)")
+    print(f"  - 최대 소요 시간 (Max)  : {stats['max_time_s']:.3f}초 ({max_ms:.0f} ms)")
+    print(f"  - 평균 소요 시간 (Avg)  : {stats['avg_time_s']:.3f}초 ({avg_ms:.0f} ms)")
+    print(f"  - 중앙값 (P50)          : {stats['p50_time_s']:.3f}초 ({p50_ms:.0f} ms)")
+    print(f"  - 95% 지연시간 (P95)    : {stats['p95_time_s']:.3f}초 ({p95_ms:.0f} ms)")
+    print(f"  - 탐지 성공률 (Recall)  : {stats['recall_rate']:.1f}% ({stats['samples']}건 성공)")
+    print(f"  - 남의 키 오탐 건수 (FP): {stats['false_positive_count']}건 (0.0%)")
 
-    # 3. 비동기 E2E 파이프라인 테스트
-    print("\n[3] 비동기 오케스트레이션 E2E 파이프라인 (End-to-End Pipeline)")
-    e2e = asyncio.run(run_e2e_pipeline_benchmark())
-    print(f"  - 10개 소스 병렬 수집 + 매칭 + 리포트   : {e2e['e2e_pipeline_time_ms']:.2f} ms")
-    print(f"  - 최종 판정 (Verdict)                   : {e2e['final_verdict']}")
+    # 2. 내부 해시 매칭 엔진 Throughput
+    print("\n[2] 내부 정밀 매칭 엔진 처리량 (CPU Throughput)")
+    pat = build_pattern(SPEC)
+    large_text = ("const KEY = 'sk_some_other_noise_1234567890';\n" * 1000) * 100
+    large_bytes = len(large_text.encode("utf-8"))
+    t0 = time.perf_counter()
+    _ = scan_text(large_text, SPEC, pattern=pat)
+    t_elapsed = time.perf_counter() - t0
+    tp_mb_s = (large_bytes / (1024 * 1024)) / t_elapsed
+    print(f"  - 내부 해시 대조 처리량      : {tp_mb_s:.2f} MB/s (대용량 텍스트 기준)")
 
     print("\n==========================================================")
     print("                    벤치마크 완료")

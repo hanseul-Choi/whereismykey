@@ -17,6 +17,7 @@ from whereismykey.config import Settings, get_settings
 from whereismykey.core.key_spec import KeySpecError
 from whereismykey.scanner.engine import ScanEngine, get_scan_engine
 from whereismykey.scanner.job_store import JobStore, get_job_store
+from whereismykey.scanner.stages import determine_active_stages
 from whereismykey.sources.base import ScanOptions
 
 router = APIRouter()
@@ -56,6 +57,7 @@ async def create_scan(
     request: ScanCreateRequest,
     job_store: Annotated[JobStore, Depends(get_job_store)],
     engine: Annotated[ScanEngine, Depends(get_scan_engine)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> ScanCreateResponse:
     """새로운 비동기 스캔 잡을 생성하고 시작."""
     try:
@@ -79,8 +81,11 @@ async def create_scan(
         crawl_max_depth=request.options.crawl_max_depth,
     )
 
+    active_stages = determine_active_stages(request.stages, settings)
+
     # 백그라운드 태스크로 스캔 오케스트레이션 실행 (태스크 참조 보관)
-    task = asyncio.create_task(engine.run_scan(job_id, spec, request.stages, options))
+    task = asyncio.create_task(engine.run_scan(job_id, spec, active_stages, options))
+
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 

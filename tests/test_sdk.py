@@ -189,3 +189,35 @@ async def test_scan_async_with_crawl_only_without_keys() -> None:
     assert len(result.findings) == 1
     assert result.findings[0].stage == wmk.Stage.CRAWL
     assert result.findings[0].url == "https://target.com/page"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_scan_default_without_any_tokens_auto_runs_crawl() -> None:
+    """토큰 및 stages를 전혀 지정하지 않아도 에러 없이 crawl 모드로 자동 실행 검증."""
+    respx.post(DDG_SEARCH_URL).mock(
+        return_value=httpx.Response(200, text="<html><body>No results</body></html>")
+    )
+
+    # 토큰과 stages를 전혀 주지 않음
+    result = await wmk.scan_async(key=FAKE_KEY)
+    # INCONCLUSIVE가 아니라 성공적으로 NOT_FOUND 반환 (에러 없음)
+    assert result.verdict == wmk.Verdict.NOT_FOUND
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_scan_with_only_github_token_does_not_require_brave() -> None:
+    """GitHub 토큰만 제공 시 Brave 키 미설정으로 인한 에러 없이 github+crawl 정상 실행 검증."""
+    respx.get("https://api.github.com/search/code").mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "items": []})
+    )
+    respx.post(DDG_SEARCH_URL).mock(
+        return_value=httpx.Response(200, text="<html><body>No results</body></html>")
+    )
+
+    result = await wmk.scan_async(
+        key=FAKE_KEY,
+        github_token="ghp_only_github_token",
+    )
+    assert result.verdict == wmk.Verdict.NOT_FOUND

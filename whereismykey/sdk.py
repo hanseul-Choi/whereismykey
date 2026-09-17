@@ -13,7 +13,10 @@ from whereismykey.config import Settings, get_settings
 from whereismykey.core.key_spec import KeySpec
 from whereismykey.core.models import Finding, ScanResult, Stage
 from whereismykey.report.builder import build_scan_result
-from whereismykey.scanner.stages import create_sources_for_stages
+from whereismykey.scanner.stages import (
+    create_sources_for_stages,
+    determine_active_stages,
+)
 from whereismykey.sources.base import ScanOptions
 
 logger = logging.getLogger(__name__)
@@ -103,11 +106,8 @@ async def scan_async(
     else:
         active_settings = base_settings
 
-    # 스테이지 정규화
-    if stages is None:
-        stages_enum = [Stage.GITHUB, Stage.WEB]
-    else:
-        stages_enum = [Stage(s) if isinstance(s, str) else s for s in stages]
+    # 스테이지 정규화 및 토큰 유무에 따른 자동 활성화
+    stages_enum = determine_active_stages(stages, active_settings)
 
     if options is not None:
         scan_options = options

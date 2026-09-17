@@ -51,7 +51,7 @@ class ScanCreateRequest(BaseModel):
     """스캔 생성 요청."""
 
     key_spec: KeySpecSchema
-    stages: list[Stage] = Field(default_factory=lambda: [Stage.GITHUB, Stage.WEB])
+    stages: list[Stage] | None = None
     options: ScanOptionsSchema = Field(default_factory=ScanOptionsSchema)
 
 

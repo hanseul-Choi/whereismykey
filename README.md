@@ -52,70 +52,147 @@ uv run python scripts/benchmark.py
 
 ---
 
-## 3. 빠른 시작 (Quick Start)
+## 3. 파이썬 모듈 사용법 (Python SDK)
 
-### 사전 요구사항
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) (권장 패키지 매니저) 또는 Docker
+`whereismykey`는 별도의 웹 서버 기동 없이도, 본인의 파이썬 스크립트·CI/CD 파이프라인·보안 점검 도구에서 라이브러리로 직접 `import`하여 사용할 수 있습니다.
 
-### 1) 로컬 개발 환경
+### 1) 설치 방법 (Installation)
 
 ```bash
-# 1. 의존성 설치
-uv sync --all-extras
+# GitHub 저장소에서 최신 버전 직접 설치
+pip install git+https://github.com/hanseul-Choi/whereismykey.git
 
-# 2. 환경변수 설정
-cp .env.example .env
-# .env 파일에서 GITHUB_TOKEN, BRAVE_API_KEY 등을 설정합니다.
-
-# 3. 서버 실행
-uv run uvicorn whereismykey.main:app --reload --port 8000
-```
-
-### 2) Docker Compose 실행
-
-```bash
-docker compose up -d --build
-```
-
-### 3) 파이썬 모듈로 직접 사용하기 (`import whereismykey`)
-
-별도의 웹 서버 기동 없이, 본인의 파이썬 스크립트나 서비스에서 라이브러리로 직접 `import`하여 사용할 수 있습니다.
-
-```python
-import whereismykey as wmk
-
-# 1. 점검할 키 명세 정의 (평문 없이 앞뒤 7자 + SHA-256 해시)
-spec = wmk.KeySpec(
-    prefix="sk_live",
-    postfix="a1b2c3d",
-    sha256="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-    name="my-service-key",
-)
-
-# 2-1. 동기 방식 실행 (일반 스크립트 / CLI 배치용)
-# 토큰은 .env에서 자동으로 읽어오거나 직접 파라미터로 전달 가능합니다.
-result = wmk.scan(spec, github_token="ghp_your_github_token")
-
-# 2-2. 비동기 방식 실행 (FastAPI / asyncio 애플리케이션용)
-# result = await wmk.scan_async(spec, github_token="ghp_your_github_token")
-
-# 3. 결과 확인
-print(f"최종 판정: {result.verdict}")  # EXPOSED | NOT_FOUND | INCONCLUSIVE
-
-if result.verdict == wmk.Verdict.EXPOSED:
-    print(f"[경고] 키가 외부에 노출되었습니다! (마스킹 키: {result.key_redacted})")
-    for finding in result.findings:
-        print(f"- 노출 위치: {finding.url}")
-        print(f"  스니펫: {finding.snippet}")
-    print("\n[권고 조치 사항]")
-    for rec in result.recommendations:
-        print(f"- {rec}")
+# 또는 로컬 클론 후 개발 모드 설치
+git clone https://github.com/hanseul-Choi/whereismykey.git
+cd whereismykey
+pip install -e .
 ```
 
 ---
 
-## 4. 환경변수 설정 (`.env`)
+### 2) 빠른 1줄 검사 (동기 방식)
+평문 키 문자열을 그대로 전달하면, 라이브러리가 로컬 메모리에서 즉시 `prefix`/`postfix` 및 `SHA-256` 해시를 자동 계산하여 안전하게 탐색합니다. (평문 키는 외부에 전송되거나 저장되지 않습니다)
+
+```python
+import whereismykey
+
+# 키 문자열로 즉시 점검
+result = whereismykey.scan(
+    key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
+    github_token="ghp_your_github_token",  # 생략 시 환경변수 GITHUB_TOKEN 참조
+    deep_scan=True,                        # 다중 페이지 전수 스캔 (기본값: True)
+)
+
+print(f"최종 판정: {result.verdict}")       # Verdict.EXPOSED | Verdict.NOT_FOUND
+print(f"마스킹 키: {result.key_redacted}")  # my_servi…012345
+
+if result.verdict == whereismykey.Verdict.EXPOSED:
+    print(f"🚨 노출된 파일 {len(result.findings)}건 발견!")
+    for finding in result.findings:
+        print(f"- [{finding.source}] {finding.url}")
+        print(f"  라인 {finding.line}: {finding.snippet}")
+    
+    print("\n[긴급 권고 조치]")
+    for rec in result.recommendations:
+        print(f"- {rec}")
+    
+    print("\n[삭제 요청 메시지 템플릿]")
+    print(result.takedown_message_template)
+else:
+    print("✅ 안전합니다! 외부에 노출된 키를 찾지 못했습니다.")
+```
+
+---
+
+### 3) 비동기(Async) 방식 검사 (`await scan_async`)
+FastAPI, aiohttp 등 비동기 웹 프레임워크나 대규모 병렬 점검 작업에서 블로킹 없이 실행할 수 있습니다.
+
+```python
+import asyncio
+import whereismykey
+
+async def main():
+    result = await whereismykey.scan_async(
+        key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
+        stages=["github", "web"],             # 점검 대상 소스 지정
+        github_token="ghp_your_github_token",
+        brave_api_key="your_brave_api_key",
+        deep_scan=True,
+    )
+    print(f"판정: {result.verdict}, 발견 건수: {len(result.findings)}건")
+
+asyncio.run(main())
+```
+
+---
+
+### 4) 완전 영지식 모드: 평문 키 없이 `KeySpec` 직접 지정
+평문 키 자체를 코드나 런타임에 전달하고 싶지 않을 때, 앞부분, 뒷부분, SHA-256 해시값만으로 구성된 `KeySpec`을 생성하여 검사합니다.
+
+```python
+import whereismykey
+
+# 앞 8자리, 뒤 6자리, 평문의 SHA-256 해시값만 지정
+spec = whereismykey.KeySpec(
+    prefix="my_serv_",
+    postfix="012345",
+    sha256="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    name="production-service-key",
+)
+
+result = whereismykey.scan(spec)
+print(f"판정 결과: {result.verdict}")
+```
+
+---
+
+### 5) SDK 주요 파라미터 및 반환값 설명
+
+#### `whereismykey.scan(...)` / `whereismykey.scan_async(...)` 파라미터:
+| 파라미터 | 타입 | 기본값 | 설명 |
+|---|---|:---:|---|
+| `target` (또는 `key` / `spec`) | `str` \| `KeySpec` | 필수 | 점검할 키 문자열 또는 `KeySpec` 객체 |
+| `deep_scan` | `bool` | `True` | 1페이지(100건)에 그치지 않고 최대 1,000건까지 전수 순회 탐색 |
+| `stages` | `list[str]` | `["github", "web"]` | 탐색할 스테이지 (`"github"`, `"web"`) |
+| `github_token` | `str` | `None` | GitHub Personal Access Token (생략 시 환경변수 `GITHUB_TOKEN` 참조) |
+| `brave_api_key` | `str` | `None` | Brave Search API Key (생략 시 환경변수 `BRAVE_API_KEY` 참조) |
+| `prefix_len` / `postfix_len` | `int` | `8` / `6` | 문자열 키 전달 시 앞/뒤 슬라이싱 길이 |
+| `name` | `str` | `None` | 키 식별용 이름 (리포트에 표기) |
+
+#### 반환 객체 (`ScanResult`) 속성:
+- `verdict`: `Verdict.EXPOSED` (노출 확정), `Verdict.NOT_FOUND` (미노출 안전), `Verdict.INCONCLUSIVE` (판정 보류)
+- `confidence`: `Confidence.CONFIRMED` (해시 완벽 일치), `Confidence.SUSPECTED` (패턴 일치)
+- `findings`: 발견된 노출 상세 목록 (`Finding` 리스트 - `url`, `source`, `repo`, `path`, `line`, `snippet`)
+- `key_redacted`: 마스킹된 키 형태 (`prefix…postfix`)
+- `recommendations`: 즉각적인 보안 조치 권고사항 목록
+- `takedown_message_template`: 저장소/웹페이지 관리자에게 보낼 수 있는 자동 작성 삭제 요청문
+
+---
+
+## 4. REST API & Docker 서버 실행
+
+파이썬 라이브러리가 아닌 독립된 HTTP 백엔드 API 서비스로 구동할 수도 있습니다.
+
+### 1) 로컬 개발 서버 실행
+```bash
+# 1. 의존성 설치
+uv sync --all-extras
+
+# 2. 환경변수 설정 (.env 파일 생성)
+cp .env.example .env
+
+# 3. 서버 기동
+uv run uvicorn whereismykey.main:app --reload --port 8000
+```
+
+### 2) Docker Compose 실행
+```bash
+docker compose up -d --build
+```
+
+---
+
+## 5. 환경변수 설정 (`.env`)
 
 | 환경변수 | 필수 여부 | 설명 | 기본값 |
 |---|---|---|---|
@@ -134,7 +211,7 @@ if result.verdict == wmk.Verdict.EXPOSED:
 
 ---
 
-## 5. API 사용 가이드
+## 6. API 사용 가이드
 
 ### 1) 헬스체크 (`GET /healthz`)
 ```bash
@@ -247,10 +324,10 @@ curl -X GET http://localhost:8000/scans/8d8b671a-2895-46a2-9442-83b38cbb2f45 \
 
 ---
 
-## 6. 테스트 및 품질 검증
+## 7. 테스트 및 품질 검증
 
 ```bash
-# 1. 전체 단위 및 통합 테스트 실행 (69개 테스트)
+# 1. 전체 단위 및 통합 테스트 실행 (76개 테스트)
 uv run pytest
 
 # 2. Ruff 린트 및 코드 포맷 검사

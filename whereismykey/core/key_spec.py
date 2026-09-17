@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from enum import StrEnum
@@ -89,3 +90,40 @@ class KeySpec:
     def redacted(self) -> str:
         """리포트 표기용 마스킹 문자열."""
         return f"{self.prefix}…{self.postfix}"
+
+    @classmethod
+    def from_key(
+        cls,
+        key: str,
+        *,
+        prefix_len: int = 8,
+        postfix_len: int = 6,
+        name: str | None = None,
+        key_type: str = "custom",
+    ) -> KeySpec:
+        """평문 키로부터 prefix, postfix, SHA-256 해시를 로컬에서 자동 생성합니다.
+
+        평문 키는 서버에 전송되거나 저장되지 않고, 메모리에서 즉시 해시화 및 슬라이싱됩니다.
+        """
+        cleaned = key.strip()
+        if not cleaned:
+            raise KeySpecError("key must not be empty")
+
+        total_len = len(cleaned)
+        # 키 길이가 prefix + postfix 보다 짧거나 같을 경우 안전 분할
+        if total_len <= (prefix_len + postfix_len):
+            prefix_len = max(1, total_len // 2)
+            postfix_len = max(1, total_len - prefix_len)
+
+        prefix = cleaned[:prefix_len]
+        postfix = cleaned[-postfix_len:]
+        sha256 = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
+
+        return cls(
+            prefix=prefix,
+            postfix=postfix,
+            sha256=sha256,
+            length=total_len,
+            name=name,
+            key_type=key_type,
+        )

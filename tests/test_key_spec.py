@@ -82,3 +82,21 @@ def test_keyspec_is_frozen() -> None:
     spec = _spec()
     with pytest.raises(Exception):  # noqa: B017 - dataclass FrozenInstanceError
         spec.prefix = "changed"  # type: ignore[misc]
+
+
+def test_keyspec_from_key() -> None:
+    raw_key = "sk_live_1234567890abcdef"
+    spec = KeySpec.from_key(raw_key, prefix_len=7, postfix_len=6, name="my-key")
+    assert spec.prefix == "sk_live"
+    assert spec.postfix == "abcdef"
+    assert len(spec.sha256) == 64
+    assert spec.length == len(raw_key)
+    assert spec.name == "my-key"
+
+
+def test_keyspec_from_key_short() -> None:
+    short_key = "123456"
+    spec = KeySpec.from_key(short_key)
+    assert spec.length == 6
+    assert spec.prefix == "123"
+    assert spec.postfix == "456"

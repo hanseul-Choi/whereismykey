@@ -112,3 +112,26 @@ async def test_scan_sync_in_running_loop_raises() -> None:
 
     with pytest.raises(RuntimeError, match=r"Please use 'await whereismykey\.scan_async"):
         wmk.scan(spec)
+
+
+@respx.mock
+def test_scan_with_raw_key_string() -> None:
+    """raw key 문자열로 직접 scan() 호출 검증."""
+    api_url = "https://api.github.com/search/code"
+    token = "ghp_sync_token_789"
+
+    mock_resp = {
+        "total_count": 0,
+        "items": [],
+    }
+    respx.get(api_url).mock(return_value=httpx.Response(200, json=mock_resp))
+
+    result = wmk.scan(
+        key=FAKE_KEY,
+        prefix_len=len(FAKE_PREFIX),
+        postfix_len=len(FAKE_POSTFIX),
+        stages=["github"],
+        github_token=token,
+    )
+    assert result.verdict == wmk.Verdict.NOT_FOUND
+    assert result.key_redacted == f"{FAKE_PREFIX}…{FAKE_POSTFIX}"

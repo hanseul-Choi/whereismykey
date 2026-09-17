@@ -1,26 +1,44 @@
 # whereismykey
 
-> **API Key 외부 노출 점검 서비스**  
+> **API Key 외부 노출 점검 서비스 & 파이썬 라이브러리 (SDK)**  
 > 평문 키를 서버에 보관하거나 전송하지 않고, **앞부분(prefix)**, **뒷부분(postfix)**, 그리고 **전체 SHA-256 해시**만을 활용하여 공개 저장소(GitHub) 및 외부 웹에 키가 노출되었는지 자동으로 탐지합니다.
 
 ---
 
-## 1. 주요 특징
+## 1. 📦 설치 방법 (Installation)
+
+```bash
+# 1) pip로 GitHub 저장소에서 최신 SDK 라이브러리 직접 설치
+pip install git+https://github.com/hanseul-Choi/whereismykey.git
+
+# 2) 저장소 로컬 클론 및 개발 모드 설치
+git clone https://github.com/hanseul-Choi/whereismykey.git
+cd whereismykey
+pip install -e .
+
+# 또는 uv 패키지 매니저 사용 시
+uv sync --all-extras
+```
+
+---
+
+## 2. 🚀 주요 특징 (Key Features)
 
 - **평문 미보관 매칭 (Zero-Knowledge Hash Matching)**: 키 평문 없이 `KeySpec`을 통해 후보 토큰을 추출하고, SHA-256 해시를 대조하여 노출 여부를 확정(`confirmed`)합니다.
-- **핀포인트 결합 쿼리 (`"{prefix}" "{postfix}"`)**: 흔한 prefix 검색으로 인한 수십만 건의 검색 노이즈를 99.99% 압축하여 전 세계 수억 개 파일 중 내 키가 있는 페이지만 1~2위로 즉시 타겟팅합니다.
-- **전수 탐색(Deep Scan) 페이지네이션**: 1페이지(100건)에서 멈추지 않고, 검색 결과가 더 존재할 경우 최대 1,000건까지 페이지를 순회하며 전수 스캔합니다.
-- **안전한 마스킹 (Redaction)**: 응답 결과, 로그, 스니펫 등 모든 출력에서 키는 `prefix…postfix` 형태로 마스킹됩니다.
 - **3대 다각도 점검 파이프라인 (자유로운 선택 및 3개 동시 실행 지원)**:
   - **1) GitHub API (`github`)**: `github_token`을 통한 GitHub Code Search API 공개 저장소 결합 검색
   - **2) 웹 검색 API (`web`)**: `brave_api_key` (또는 Google CSE / SerpAPI)를 통한 검색 엔진 인덱스 검색
-  - **3) 웹 크롤러 (`crawl`) 🆕**: **별도 API 키 없이 100% 무료**로 동작하는 공개 검색 엔진(DuckDuckGo HTML) 크롤링 및 지정 시드 URL 심층 크롤링
+  - **3) 웹 크롤러 (`crawl`)**: **별도 API 키 없이 100% 무료**로 동작하는 공개 검색 엔진(DuckDuckGo HTML) 크롤링 및 지정 시드 URL 심층 크롤링
+- **토큰 비필수 & 스마트 자동 감지**: 어떤 API 키나 토큰이 없어도 웹 크롤러(`crawl`) 모드로 즉시 동작하며, 입력된 토큰에 따라 사용 가능한 스테이지를 자동으로 활성화합니다.
+- **핀포인트 결합 쿼리 (`"{prefix}" "{postfix}"`)**: 흔한 prefix 검색으로 인한 수십만 건의 검색 노이즈를 99.99% 압축하여 전 세계 수억 개 파일 중 내 키가 있는 페이지만 1~2위로 즉시 타겟팅합니다.
+- **전수 탐색(Deep Scan) 페이지네이션**: 1페이지(100건)에서 멈추지 않고, 검색 결과가 더 존재할 경우 최대 1,000건까지 페이지를 순회하며 전수 스캔합니다.
+- **안전한 마스킹 (Redaction)**: 응답 결과, 로그, 스니펫 등 모든 출력에서 키는 `prefix…postfix` 형태로 마스킹됩니다.
 - **비동기 잡 & 폴링 API**: 대량 검색을 백그라운드 태스크로 처리하고 진행 상황 및 결과를 JSON 리포트로 제공합니다.
 - **조치 권고 & 삭제 요청(Takedown) 템플릿**: 노출 확인 시 즉시 키 폐기 권고와 노출 사이트 관리자에게 보낼 삭제 요청 메시지를 자동 생성합니다.
 
 ---
 
-## 2. ⚡ 성능 & 정확도 실측 벤치마크 (외부 사이트 실전 탐색 결과)
+## 3. ⚡ 성능 & 정확도 실측 벤치마크 (외부 사이트 실전 탐색 결과)
 
 실제 외부 사이트(GitHub Code Search, Brave 웹 검색)를 통해 수천 건의 외부 오픈 소스 및 웹 페이지를 탐색했을 때의 **실측 소요 시간(최소, 최대, 평균, P95)**과 **정확도(탐지율 100%, 오탐 0건)** 통계입니다.
 
@@ -53,31 +71,17 @@ uv run python scripts/benchmark.py
 
 ---
 
-## 3. 파이썬 모듈 사용법 (Python SDK)
+## 4. 💡 파이썬 모듈 사용법 (Python SDK)
 
 `whereismykey`는 별도의 웹 서버 기동 없이도, 본인의 파이썬 스크립트·CI/CD 파이프라인·보안 점검 도구에서 라이브러리로 직접 `import`하여 사용할 수 있습니다.
 
-### 1) 설치 방법 (Installation)
-
-```bash
-# GitHub 저장소에서 최신 버전 직접 설치
-pip install git+https://github.com/hanseul-Choi/whereismykey.git
-
-# 또는 로컬 클론 후 개발 모드 설치
-git clone https://github.com/hanseul-Choi/whereismykey.git
-cd whereismykey
-pip install -e .
-```
-
----
-
-### 2) 빠른 1줄 검사 (동기 방식)
+### 1) 빠른 1줄 검사 (동기 방식)
 평문 키 문자열을 그대로 전달하면, 라이브러리가 로컬 메모리에서 즉시 `prefix`/`postfix` 및 `SHA-256` 해시를 자동 계산하여 안전하게 탐색합니다. (평문 키는 외부에 전송되거나 저장되지 않습니다)
 
 ```python
 import whereismykey
 
-# 키 문자열로 즉시 점검
+# 키 문자열로 즉시 점검 (토큰 미전달 시 웹 크롤러가 자동으로 안전하게 탐색)
 result = whereismykey.scan(
     key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
     github_token="ghp_your_github_token",  # 생략 시 환경변수 GITHUB_TOKEN 참조
@@ -105,7 +109,7 @@ else:
 
 ---
 
-### 3) 3대 탐색 방식 선택 및 동시 실행 (GitHub, Web Search, Web Crawl)
+### 2) 3대 탐색 방식 선택 및 동시 실행 (GitHub, Web Search, Web Crawl)
 사용자의 필요 및 보유한 API 키에 따라 3가지 탐색 방식을 자유롭게 선택하거나 동시에 모두 실행할 수 있습니다:
 
 ```python
@@ -136,7 +140,7 @@ result = whereismykey.scan(
 
 ---
 
-### 4) 비동기(Async) 방식 검사 (`await scan_async`)
+### 3) 비동기(Async) 방식 검사 (`await scan_async`)
 FastAPI, aiohttp 등 비동기 웹 프레임워크나 대규모 병렬 점검 작업에서 블로킹 없이 실행할 수 있습니다.
 
 ```python
@@ -160,7 +164,7 @@ asyncio.run(main())
 
 ---
 
-### 5) 완전 영지식 모드: 평문 키 없이 `KeySpec` 직접 지정
+### 4) 완전 영지식 모드: 평문 키 없이 `KeySpec` 직접 지정
 평문 키 자체를 코드나 런타임에 전달하고 싶지 않을 때, 앞부분, 뒷부분, SHA-256 해시값만으로 구성된 `KeySpec`을 생성하여 검사합니다.
 
 ```python
@@ -180,13 +184,13 @@ print(f"판정 결과: {result.verdict}")
 
 ---
 
-### 6) SDK 주요 파라미터 및 반환값 설명
+### 5) SDK 주요 파라미터 및 반환값 설명
 
 #### `whereismykey.scan(...)` / `whereismykey.scan_async(...)` 파라미터:
 | 파라미터 | 타입 | 기본값 | 설명 |
 |---|---|:---:|---|
 | `target` (또는 `key` / `spec`) | `str` \| `KeySpec` | 필수 | 점검할 키 문자열 또는 `KeySpec` 객체 |
-| `stages` | `list[str]` | `["github", "web"]` | 탐색할 스테이지 목록 (`"github"`, `"web"`, `"crawl"` 선택 또는 조합) |
+| `stages` | `list[str]` | `None` (자동 감지) | 탐색할 스테이지 목록 (`"github"`, `"web"`, `"crawl"` 선택 또는 조합, 미지정 시 토큰에 따라 자동 감지) |
 | `deep_scan` | `bool` | `True` | 1페이지(100건)에 그치지 않고 최대 1,000건까지 전수 순회 탐색 |
 | `github_token` | `str` | `None` | GitHub Personal Access Token (생략 시 환경변수 `GITHUB_TOKEN` 참조) |
 | `brave_api_key` | `str` | `None` | Brave Search API Key (생략 시 환경변수 `BRAVE_API_KEY` 참조) |
@@ -205,7 +209,7 @@ print(f"판정 결과: {result.verdict}")
 
 ---
 
-## 4. REST API & Docker 서버 실행
+## 5. 🌐 REST API & Docker 서버 실행
 
 파이썬 라이브러리가 아닌 독립된 HTTP 백엔드 API 서비스로 구동할 수도 있습니다.
 
@@ -228,7 +232,7 @@ docker compose up -d --build
 
 ---
 
-## 5. 환경변수 설정 (`.env`)
+## 6. ⚙️ 환경변수 설정 (`.env`)
 
 | 환경변수 | 필수 여부 | 설명 | 기본값 |
 |---|---|---|---|
@@ -247,7 +251,7 @@ docker compose up -d --build
 
 ---
 
-## 6. API 사용 가이드
+## 7. 📖 API 사용 가이드
 
 ### 1) 헬스체크 (`GET /healthz`)
 ```bash
@@ -263,19 +267,19 @@ curl -X POST http://localhost:8000/scans \
   -d '{
     "key_spec": {
       "name": "my-service-prod-key",
-      "prefix": "sk_live",
-      "postfix": "a1b2c3d",
+      "prefix": "my_serv_",
+      "postfix": "012345",
       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
       "length": 48,
       "charset": "base62"
     },
-    "stages": ["github", "web"],
+    "stages": ["github", "web", "crawl"],
     "options": {
       "max_results_per_source": 100,
       "include_pattern_only": true,
       "fetch_timeout_s": 10.0,
       "deep_scan": true,
-      "qualifiers": ["filename:.env", "org:myorg"]
+      "qualifiers": ["filename:.env"]
     }
   }'
 ```
@@ -289,13 +293,15 @@ curl -X POST http://localhost:8000/scans \
   - `charset` (문자열, 선택): `base62` | `alnum` | `hex` | `base64url` | `custom`
   - `custom_charset` (문자열, 선택): `charset=custom`일 때의 정규식 문자 클래스 (예: `A-Za-z0-9_-`)
   - `name` (문자열, 선택): 키 식별 이름
-- **`stages`** (배열, 선택): 점검할 스테이지 목록. 기본값 `["github", "web"]`
+- **`stages`** (배열, 선택): 점검할 스테이지 목록. 기본값 `null` (설정된 토큰에 따라 자동 활성화, 미설정 시 `crawl` 자동 실행)
 - **`options`** (객체, 선택):
   - `max_results_per_source` (정수): 소스당 최대 검색 건수 (기본: 100, 최대 1,000)
   - `include_pattern_only` (불리언): 해시 불일치 패턴 일치 건 포함 여부 (기본: true)
   - `fetch_timeout_s` (실수): 페이지 fetch 타임아웃 초 (기본: 10.0)
   - `deep_scan` (불리언): 1페이지(100건) 제한 없이 다중 페이지를 순회하며 전수 탐색 (기본: true)
   - `qualifiers` (배열): GitHub 검색 한정자 목록 (예: `["filename:.env", "org:myorg"]`)
+  - `crawl_urls` (배열): 웹 크롤러 모드 시 추가 탐색할 시드 웹 URL 목록
+  - `crawl_max_depth` (정수): 시드 URL 내부 동일 도메인 링크 탐색 깊이 (기본: 1)
 
 **응답 (202 Accepted):**
 ```json
@@ -321,14 +327,14 @@ curl -X GET http://localhost:8000/scans/8d8b671a-2895-46a2-9442-83b38cbb2f45 \
   "started_at": "2026-09-17T00:00:01Z",
   "finished_at": "2026-09-17T00:00:02Z",
   "progress": {
-    "stage": "web",
-    "sources_done": 2,
-    "sources_total": 2
+    "stage": "crawl",
+    "sources_done": 3,
+    "sources_total": 3
   },
   "result": {
     "verdict": "EXPOSED",
     "key_name": "my-service-prod-key",
-    "key_redacted": "sk_live…a1b2c3d",
+    "key_redacted": "my_serv_…012345",
     "findings": [
       {
         "confidence": "confirmed",
@@ -339,7 +345,7 @@ curl -X GET http://localhost:8000/scans/8d8b671a-2895-46a2-9442-83b38cbb2f45 \
         "repo": "acme/repo",
         "path": "config.py",
         "line": 12,
-        "snippet": "API_KEY = \"sk_live…a1b2c3d\""
+        "snippet": "API_KEY = \"my_serv_…012345\""
       }
     ],
     "recommendations": [
@@ -347,7 +353,7 @@ curl -X GET http://localhost:8000/scans/8d8b671a-2895-46a2-9442-83b38cbb2f45 \
       "파일 수정만으로는 부족합니다 — 커밋 히스토리·포크·검색 캐시에 남으므로 키 폐기가 유일한 해결책입니다.",
       "노출 페이지 소유자에게 아래 템플릿으로 삭제를 요청하세요."
     ],
-    "takedown_message_template": "안녕하세요,\n귀하께서 관리하시는 아래 페이지에 유효한 API 자격증명으로 보이는 문자열(sk_live…a1b2c3d)이 포함되어 있어 연락드립니다:\n- https://github.com/acme/repo/blob/main/config.py#L12\n\n해당 문자열의 삭제 또는 마스킹 처리를 정중히 요청드립니다.\n감사합니다."
+    "takedown_message_template": "안녕하세요,\n귀하께서 관리하시는 아래 페이지에 유효한 API 자격증명으로 보이는 문자열이 포함되어 있어 연락드립니다:\n- https://github.com/acme/repo/blob/main/config.py#L12\n\n해당 문자열의 삭제 또는 마스킹 처리를 정중히 요청드립니다.\n감사합니다."
   },
   "errors": []
 }
@@ -360,10 +366,10 @@ curl -X GET http://localhost:8000/scans/8d8b671a-2895-46a2-9442-83b38cbb2f45 \
 
 ---
 
-## 7. 테스트 및 품질 검증
+## 8. 🧪 테스트 및 품질 검증
 
 ```bash
-# 1. 전체 단위 및 통합 테스트 실행 (76개 테스트)
+# 1. 전체 단위 및 통합 테스트 실행 (84개 테스트)
 uv run pytest
 
 # 2. Ruff 린트 및 코드 포맷 검사

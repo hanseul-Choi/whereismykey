@@ -12,6 +12,7 @@ import random
 import time
 from typing import Any
 
+from whereismykey.config import Settings
 from whereismykey.core.key_spec import Charset, KeySpec
 from whereismykey.core.matcher import build_pattern, scan_text
 from whereismykey.core.models import Confidence, Finding, Severity, Stage, Verdict
@@ -91,26 +92,35 @@ class RealisticExternalSource(SearchSource):
         return findings
 
 
-async def run_external_e2e_benchmark(samples: int = 100) -> dict[str, Any]:
+async def run_external_e2e_benchmark(
+    samples: int = 10000,
+    concurrency: int = 250,
+) -> dict[str, Any]:
     """실제 외부 사이트(GitHub + 웹) 탐색 시나리오 기반 표본 벤치마크."""
     job_store = JobStore()
-    engine = ScanEngine(job_store=job_store)
+    settings = Settings(max_concurrent_jobs=concurrency)
+    engine = ScanEngine(job_store=job_store, settings=settings)
 
     durations: list[float] = []
     total_files_scanned = 0
     confirmed_found = 0
-    false_positives = 0  # 남의 키인데 confirmed로 판정된 건수
+    false_positives = 0
+    completed_count = 0
 
-    print(f"  -> 총 {samples}회 실전 스캔 표본 측정 중...")
+    sem = asyncio.Semaphore(concurrency)
+    lock = asyncio.Lock()
 
-    for i in range(samples):
+    print(f"  -> 총 {samples:,}회 실전 스캔 표본 측정 시작 (동시성: {concurrency})...")
+    start_bench = time.perf_counter()
+
+    async def _run_single(i: int) -> None:
+        nonlocal total_files_scanned, confirmed_found, false_positives, completed_count
         job_id = f"sample-job-{i}"
-        await job_store.create_job(job_id)
 
         # 회당 GitHub(30~50개 파일) + Web(20~40개 페이지) 수집 모사
         gh_files = random.randint(30, 50)
         web_files = random.randint(20, 40)
-        total_files_scanned += gh_files + web_files
+        file_count = gh_files + web_files
 
         sources = [
             RealisticExternalSource("github_code_search", Stage.GITHUB, num_files=gh_files),
@@ -119,28 +129,51 @@ async def run_external_e2e_benchmark(samples: int = 100) -> dict[str, Any]:
             ),
         ]
 
-        start_time = time.perf_counter()
-        await engine.run_scan(
-            job_id=job_id,
-            spec=SPEC,
-            stages=[Stage.GITHUB, Stage.WEB],
-            options=ScanOptions(deep_scan=True),
-            sources=sources,
-        )
-        elapsed = time.perf_counter() - start_time
-        durations.append(elapsed)
+        async with sem:
+            await job_store.create_job(job_id)
+            start_time = time.perf_counter()
+            await engine.run_scan(
+                job_id=job_id,
+                spec=SPEC,
+                stages=[Stage.GITHUB, Stage.WEB],
+                options=ScanOptions(deep_scan=True),
+                sources=sources,
+            )
+            elapsed = time.perf_counter() - start_time
 
-        job = await job_store.get_job(job_id)
-        if job and job.result:
-            # 정답 확인
-            has_confirmed = any(f.confidence == Confidence.CONFIRMED for f in job.result.findings)
-            if has_confirmed and job.result.verdict == Verdict.EXPOSED:
+            job = await job_store.get_job(job_id)
+            has_confirmed = False
+            fp = 0
+            if job and job.result:
+                has_confirmed = any(
+                    f.confidence == Confidence.CONFIRMED for f in job.result.findings
+                )
+                if has_confirmed and job.result.verdict == Verdict.EXPOSED:
+                    pass
+                else:
+                    has_confirmed = False
+
+                for f in job.result.findings:
+                    if f.confidence == Confidence.CONFIRMED and "external-repo-0" not in f.url:
+                        fp += 1
+
+        async with lock:
+            durations.append(elapsed)
+            total_files_scanned += file_count
+            if has_confirmed:
                 confirmed_found += 1
+            false_positives += fp
+            completed_count += 1
+            if completed_count % 2000 == 0 or completed_count == samples:
+                elapsed_so_far = time.perf_counter() - start_bench
+                print(
+                    f"     [{completed_count:,} / {samples:,} "
+                    f"({completed_count / samples * 100:.0f}%)] 진행 완료 "
+                    f"(경과: {elapsed_so_far:.1f}초)..."
+                )
 
-            # 오탐 확인: confirmed인데 실제 타겟 키가 아닌 것이 있는가?
-            for f in job.result.findings:
-                if f.confidence == Confidence.CONFIRMED and "external-repo-0" not in f.url:
-                    false_positives += 1
+    tasks = [_run_single(i) for i in range(samples)]
+    await asyncio.gather(*tasks)
 
     durations.sort()
     min_time = durations[0]
@@ -168,9 +201,9 @@ def main() -> None:
     print("       whereismykey 외부 사이트 실전 탐색 벤치마크")
     print("==========================================================")
 
-    # 1. 외부 사이트 연동 실전 E2E 표본 벤치마크 (표본 100회)
+    # 1. 외부 사이트 연동 실전 E2E 표본 벤치마크 (표본 10,000회)
     print("\n[1] 외부 사이트(GitHub + 웹 검색) 실전 탐색 속도 및 정확도")
-    stats = asyncio.run(run_external_e2e_benchmark(samples=100))
+    stats = asyncio.run(run_external_e2e_benchmark(samples=10000))
 
     print(f"  - 표본 수 (Sample Size)       : {stats['samples']} 회")
     print(

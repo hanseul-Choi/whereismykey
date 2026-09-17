@@ -50,6 +50,8 @@ async def scan_async(
     deep_scan: bool = True,
     github_token: str | None = None,
     brave_api_key: str | None = None,
+    crawl_urls: list[str] | None = None,
+    crawl_max_depth: int = 1,
     settings: Settings | None = None,
     prefix_len: int = 8,
     postfix_len: int = 6,
@@ -61,11 +63,13 @@ async def scan_async(
         target: 점검 대상 KeySpec 또는 평문 키 문자열.
         key: 평문 키 문자열 (지정 시 로컬에서 즉시 SHA-256 해시 및 prefix/postfix 분할).
         spec: 점검 대상 KeySpec 객체.
-        stages: 점검할 스테이지 목록 (기본: ["github", "web"]).
+        stages: 점검할 스테이지 목록 (선택: "github", "web", "crawl"). 기본: ["github", "web"].
         options: 스캔 세부 옵션 (기본: ScanOptions()).
         deep_scan: 페이지네이션 전수 스캔 여부 (기본: True).
         github_token: GitHub Code Search API 인증 토큰 (설정 파일보다 우선).
         brave_api_key: Brave Search API 인증 키 (설정 파일보다 우선).
+        crawl_urls: 웹 크롤러 탐색 시 추가 점검할 시드 웹 URL 목록 (선택).
+        crawl_max_depth: 시드 URL 내부 링크 탐색 깊이 (기본: 1).
         settings: 사용자 정의 Settings 객체 (선택).
         prefix_len: key 지정 시 접두사 길이 (기본: 8).
         postfix_len: key 지정 시 접미사 길이 (기본: 6).
@@ -105,7 +109,15 @@ async def scan_async(
     else:
         stages_enum = [Stage(s) if isinstance(s, str) else s for s in stages]
 
-    scan_options = options or ScanOptions(deep_scan=deep_scan)
+    if options is not None:
+        scan_options = options
+    else:
+        scan_options = ScanOptions(
+            deep_scan=deep_scan,
+            crawl_urls=crawl_urls,
+            crawl_max_depth=crawl_max_depth,
+        )
+
     sources = create_sources_for_stages(stages_enum, active_settings)
 
     all_findings: list[Finding] = []
@@ -133,6 +145,8 @@ def scan(
     deep_scan: bool = True,
     github_token: str | None = None,
     brave_api_key: str | None = None,
+    crawl_urls: list[str] | None = None,
+    crawl_max_depth: int = 1,
     settings: Settings | None = None,
     prefix_len: int = 8,
     postfix_len: int = 6,
@@ -164,6 +178,8 @@ def scan(
             deep_scan=deep_scan,
             github_token=github_token,
             brave_api_key=brave_api_key,
+            crawl_urls=crawl_urls,
+            crawl_max_depth=crawl_max_depth,
             settings=settings,
             prefix_len=prefix_len,
             postfix_len=postfix_len,

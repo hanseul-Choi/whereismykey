@@ -28,6 +28,7 @@ class Verdict(StrEnum):
 class Stage(StrEnum):
     GITHUB = "github"
     WEB = "web"
+    CRAWL = "crawl"
 
 
 class JobStatus(StrEnum):

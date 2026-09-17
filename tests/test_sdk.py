@@ -6,6 +6,7 @@ import httpx
 import pytest
 import respx
 import whereismykey as wmk
+from whereismykey.sources.crawl import DDG_SEARCH_URL
 
 from tests.conftest import FAKE_KEY, FAKE_POSTFIX, FAKE_PREFIX, FAKE_SHA256
 
@@ -135,3 +136,56 @@ def test_scan_with_raw_key_string() -> None:
     )
     assert result.verdict == wmk.Verdict.NOT_FOUND
     assert result.key_redacted == f"{FAKE_PREFIX}…{FAKE_POSTFIX}"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_scan_async_with_all_three_stages() -> None:
+    """GitHub, Web Search, Web Crawl 3대 탐색 방식 동시 실행 검증."""
+    # 1. GitHub Code Search mock
+    respx.get("https://api.github.com/search/code").mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "items": []})
+    )
+    # 2. Brave Search mock
+    respx.get("https://api.search.brave.com/res/v1/web/search").mock(
+        return_value=httpx.Response(200, json={"web": {"results": []}})
+    )
+    # 3. DuckDuckGo HTML Crawl mock
+    respx.post(DDG_SEARCH_URL).mock(
+        return_value=httpx.Response(200, text="<html><body>No keys found</body></html>")
+    )
+
+    result = await wmk.scan_async(
+        key=FAKE_KEY,
+        stages=["github", "web", "crawl"],
+        github_token="ghp_test_all_three",
+        brave_api_key="brave_test_all_three",
+    )
+    assert result.verdict == wmk.Verdict.NOT_FOUND
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_scan_async_with_crawl_only_without_keys() -> None:
+    """외부 API 토큰 없이 순수 Web Crawling 모드로만 실행 검증."""
+    # DuckDuckGo HTML Crawl mock
+    respx.post(DDG_SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            text='<div class="result"><h2 class="result__title"><a href="https://target.com/page">Link</a></h2></div>',
+        )
+    )
+    # Target page contains secret
+    respx.get("https://target.com/page").mock(
+        return_value=httpx.Response(200, text=f"Exposed key here: {FAKE_KEY}")
+    )
+
+    # API 토큰 전혀 없이 crawl 모드만 실행
+    result = await wmk.scan_async(
+        key=FAKE_KEY,
+        stages=["crawl"],
+    )
+    assert result.verdict == wmk.Verdict.EXPOSED
+    assert len(result.findings) == 1
+    assert result.findings[0].stage == wmk.Stage.CRAWL
+    assert result.findings[0].url == "https://target.com/page"

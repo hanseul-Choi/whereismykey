@@ -11,9 +11,10 @@
 - **핀포인트 결합 쿼리 (`"{prefix}" "{postfix}"`)**: 흔한 prefix 검색으로 인한 수십만 건의 검색 노이즈를 99.99% 압축하여 전 세계 수억 개 파일 중 내 키가 있는 페이지만 1~2위로 즉시 타겟팅합니다.
 - **전수 탐색(Deep Scan) 페이지네이션**: 1페이지(100건)에서 멈추지 않고, 검색 결과가 더 존재할 경우 최대 1,000건까지 페이지를 순회하며 전수 스캔합니다.
 - **안전한 마스킹 (Redaction)**: 응답 결과, 로그, 스니펫 등 모든 출력에서 키는 `prefix…postfix` 형태로 마스킹됩니다.
-- **2단계 점검 파이프라인**:
-  - **1단계 — GitHub**: GitHub Code Search API를 통한 공개 저장소 결합 검색
-  - **2단계 — 외부 웹**: 검색 엔진(Brave Search API 기본, Google CSE / SerpAPI 지원) + SSRF 가드가 적용된 본문 Fetcher
+- **3대 다각도 점검 파이프라인 (자유로운 선택 및 3개 동시 실행 지원)**:
+  - **1) GitHub API (`github`)**: `github_token`을 통한 GitHub Code Search API 공개 저장소 결합 검색
+  - **2) 웹 검색 API (`web`)**: `brave_api_key` (또는 Google CSE / SerpAPI)를 통한 검색 엔진 인덱스 검색
+  - **3) 웹 크롤러 (`crawl`) 🆕**: **별도 API 키 없이 100% 무료**로 동작하는 공개 검색 엔진(DuckDuckGo HTML) 크롤링 및 지정 시드 URL 심층 크롤링
 - **비동기 잡 & 폴링 API**: 대량 검색을 백그라운드 태스크로 처리하고 진행 상황 및 결과를 JSON 리포트로 제공합니다.
 - **조치 권고 & 삭제 요청(Takedown) 템플릿**: 노출 확인 시 즉시 키 폐기 권고와 노출 사이트 관리자에게 보낼 삭제 요청 메시지를 자동 생성합니다.
 
@@ -80,10 +81,10 @@ import whereismykey
 result = whereismykey.scan(
     key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
     github_token="ghp_your_github_token",  # 생략 시 환경변수 GITHUB_TOKEN 참조
-    deep_scan=True,                        # 다중 페이지 전수 스캔 (기본값: True)
+    deep_scan=True,  # 다중 페이지 전수 스캔 (기본값: True)
 )
 
-print(f"최종 판정: {result.verdict}")       # Verdict.EXPOSED | Verdict.NOT_FOUND
+print(f"최종 판정: {result.verdict}")  # Verdict.EXPOSED | Verdict.NOT_FOUND
 print(f"마스킹 키: {result.key_redacted}")  # my_servi…012345
 
 if result.verdict == whereismykey.Verdict.EXPOSED:
@@ -91,11 +92,11 @@ if result.verdict == whereismykey.Verdict.EXPOSED:
     for finding in result.findings:
         print(f"- [{finding.source}] {finding.url}")
         print(f"  라인 {finding.line}: {finding.snippet}")
-    
+
     print("\n[긴급 권고 조치]")
     for rec in result.recommendations:
         print(f"- {rec}")
-    
+
     print("\n[삭제 요청 메시지 템플릿]")
     print(result.takedown_message_template)
 else:
@@ -104,29 +105,62 @@ else:
 
 ---
 
-### 3) 비동기(Async) 방식 검사 (`await scan_async`)
+### 3) 3대 탐색 방식 선택 및 동시 실행 (GitHub, Web Search, Web Crawl)
+사용자의 필요 및 보유한 API 키에 따라 3가지 탐색 방식을 자유롭게 선택하거나 동시에 모두 실행할 수 있습니다:
+
+```python
+import whereismykey
+
+# ① [추천] 3개 방식 동시 실행 (GitHub API + 검색 엔진 API + 웹 크롤러)
+result = whereismykey.scan(
+    key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
+    stages=["github", "web", "crawl"],
+    github_token="ghp_your_github_token",
+    brave_api_key="your_brave_api_key",
+)
+
+# ② [100% 무료 모드] 외부 API 키가 없을 때: 순수 웹 크롤러만 사용
+result = whereismykey.scan(
+    key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
+    stages=["crawl"],  # API 키 전혀 필요 없음!
+)
+
+# ③ [시드 URL 심층 크롤링] 사내 위키, 블로그, 문서 사이트 등 특정 웹사이트를 직접 크롤링
+result = whereismykey.scan(
+    key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
+    stages=["crawl"],
+    crawl_urls=["https://my-company-docs.com", "https://blog.my-service.io"],
+    crawl_max_depth=1,  # 내부 하위 링크(depth 1)까지 순회 탐색
+)
+```
+
+---
+
+### 4) 비동기(Async) 방식 검사 (`await scan_async`)
 FastAPI, aiohttp 등 비동기 웹 프레임워크나 대규모 병렬 점검 작업에서 블로킹 없이 실행할 수 있습니다.
 
 ```python
 import asyncio
 import whereismykey
 
+
 async def main():
     result = await whereismykey.scan_async(
         key="my_service_key_abcdefghijklmnopqrstuvwxyz012345",
-        stages=["github", "web"],             # 점검 대상 소스 지정
+        stages=["github", "web", "crawl"],  # 3대 소스 동시 비동기 점검
         github_token="ghp_your_github_token",
         brave_api_key="your_brave_api_key",
         deep_scan=True,
     )
     print(f"판정: {result.verdict}, 발견 건수: {len(result.findings)}건")
 
+
 asyncio.run(main())
 ```
 
 ---
 
-### 4) 완전 영지식 모드: 평문 키 없이 `KeySpec` 직접 지정
+### 5) 완전 영지식 모드: 평문 키 없이 `KeySpec` 직접 지정
 평문 키 자체를 코드나 런타임에 전달하고 싶지 않을 때, 앞부분, 뒷부분, SHA-256 해시값만으로 구성된 `KeySpec`을 생성하여 검사합니다.
 
 ```python
@@ -140,22 +174,24 @@ spec = whereismykey.KeySpec(
     name="production-service-key",
 )
 
-result = whereismykey.scan(spec)
+result = whereismykey.scan(spec, stages=["github", "web", "crawl"])
 print(f"판정 결과: {result.verdict}")
 ```
 
 ---
 
-### 5) SDK 주요 파라미터 및 반환값 설명
+### 6) SDK 주요 파라미터 및 반환값 설명
 
 #### `whereismykey.scan(...)` / `whereismykey.scan_async(...)` 파라미터:
 | 파라미터 | 타입 | 기본값 | 설명 |
 |---|---|:---:|---|
 | `target` (또는 `key` / `spec`) | `str` \| `KeySpec` | 필수 | 점검할 키 문자열 또는 `KeySpec` 객체 |
+| `stages` | `list[str]` | `["github", "web"]` | 탐색할 스테이지 목록 (`"github"`, `"web"`, `"crawl"` 선택 또는 조합) |
 | `deep_scan` | `bool` | `True` | 1페이지(100건)에 그치지 않고 최대 1,000건까지 전수 순회 탐색 |
-| `stages` | `list[str]` | `["github", "web"]` | 탐색할 스테이지 (`"github"`, `"web"`) |
 | `github_token` | `str` | `None` | GitHub Personal Access Token (생략 시 환경변수 `GITHUB_TOKEN` 참조) |
 | `brave_api_key` | `str` | `None` | Brave Search API Key (생략 시 환경변수 `BRAVE_API_KEY` 참조) |
+| `crawl_urls` | `list[str]` | `None` | 웹 크롤러(`crawl`) 모드에서 추가 탐색할 시드 웹 URL 목록 |
+| `crawl_max_depth` | `int` | `1` | 시드 URL 내부 동일 도메인 링크 탐색 깊이 |
 | `prefix_len` / `postfix_len` | `int` | `8` / `6` | 문자열 키 전달 시 앞/뒤 슬라이싱 길이 |
 | `name` | `str` | `None` | 키 식별용 이름 (리포트에 표기) |
 

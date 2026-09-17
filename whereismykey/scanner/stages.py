@@ -5,6 +5,7 @@ from __future__ import annotations
 from whereismykey.config import Settings
 from whereismykey.core.models import Stage
 from whereismykey.sources.base import SearchSource
+from whereismykey.sources.crawl import WebCrawlSource
 from whereismykey.sources.fetcher import SafeFetcher
 from whereismykey.sources.github_code import GitHubCodeSource
 from whereismykey.sources.web import WebSearchSource
@@ -36,6 +37,19 @@ def create_sources_for_stages(
                     provider=provider,
                     fetcher=fetcher,
                     max_concurrent_fetches=settings.max_concurrent_fetches,
+                )
+            )
+        elif stage == Stage.CRAWL:
+            fetcher = SafeFetcher(
+                user_agent=settings.http_user_agent,
+                timeout_s=settings.fetch_timeout_s,
+            )
+            sources.append(
+                WebCrawlSource(
+                    fetcher=fetcher,
+                    max_concurrent_fetches=settings.max_concurrent_fetches,
+                    user_agent=settings.http_user_agent,
+                    timeout_s=settings.fetch_timeout_s,
                 )
             )
     return sources

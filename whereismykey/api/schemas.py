@@ -43,6 +43,8 @@ class ScanOptionsSchema(BaseModel):
     fetch_timeout_s: float = 10.0
     deep_scan: bool = True
     qualifiers: list[str] | None = None
+    crawl_urls: list[str] | None = None
+    crawl_max_depth: int = 1
 
 
 class ScanCreateRequest(BaseModel):
